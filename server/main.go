@@ -5,11 +5,12 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"tcp1/btmsg"
 	"tcp1/mytcp"
 )
 
 func main() {
-	server := mytcp.NewTcpServer("989")
+	server := mytcp.NewTcpServer("989", btmsg.NewReader())
 	wg, err := server.Start()
 	if err != nil {
 		panic(err)

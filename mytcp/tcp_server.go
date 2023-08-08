@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
-	"io"
 	"net"
 	"sync"
 	"sync/atomic"
+	"tcp1/btmsg"
 )
 
 type CloseCallback func(conn *TcpConn, isServer bool, isClient bool)
@@ -15,7 +15,7 @@ type ReceiveCallback func(conn *TcpConn, bt []byte)
 
 type ITcpServer interface {
 	Shutdown()
-	Send(conn *TcpConn, v []byte)
+	Send(conn *TcpConn, v btmsg.IMsg)
 	OnReceive(f ReceiveCallback)
 	OnClose(f CloseCallback)
 	Start() (wg *sync.WaitGroup, err error)
@@ -36,17 +36,18 @@ type tcpServer struct {
 	lastId          uint32
 	stop            int
 	lock            sync.Mutex
+	reader          btmsg.IMsgReader
 }
 
 type TcpConn struct {
 	conn     net.Conn
 	id       uint32
-	input    chan []byte
-	output   chan []byte
+	input    chan btmsg.IMsg
+	output   chan btmsg.IMsg
 	waitConn chan bool
 }
 
-func NewTcpServer(port string) *tcpServer {
+func NewTcpServer(port string, r btmsg.IMsgReader) *tcpServer {
 	return &tcpServer{
 		listener: nil,
 		closeCallback: func(conn *TcpConn, isServer bool, isClient bool) {
@@ -58,6 +59,7 @@ func NewTcpServer(port string) *tcpServer {
 		lastId: 0,
 		stop:   0,
 		lock:   sync.Mutex{},
+		reader: r,
 	}
 }
 
@@ -118,8 +120,8 @@ func (l *tcpServer) ConsumeOutput(conn *TcpConn) {
 			return
 		case msg := <-conn.output:
 			id := conn.id
-			fmt.Println("output id", id, "msg", string(msg))
-			l.handelReceive(conn, msg)
+			fmt.Println("output id", id, "msg", string(msg.Byte()))
+			l.handelReceive(conn, msg.Byte())
 		}
 	}
 }
@@ -136,13 +138,13 @@ func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 			}
 
 			id := conn.id
-			_, err := conn.conn.Write(msg)
+			_, err := conn.conn.Write(msg.Byte())
 			if err != nil {
 				log.Err(errors.Wrapf(err, "conn %d write err", id))
 				continue
 			}
 
-			log.Print("input id", id, "msg", string(msg))
+			log.Print("input id", id, "msg", string(msg.Byte()))
 
 			l.lock.Unlock()
 		}
@@ -156,16 +158,16 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 			return
 		case <-conn.output:
 		default:
-			bt := make([]byte, 1024)
-			n, err := conn.conn.Read(bt)
+			res := l.reader.ReadMsg(conn.conn)
+			err := res.GetErr()
 			if err != nil {
-				if err == io.EOF {
+				if res.IsCloseByClient() {
 					l.handelReadClose(conn, false, true)
 					return
 				}
 
-				if _, ok := err.(*net.OpError); ok {
-					l.handelReadClose(conn, true, false)
+				if res.IsCloseByServer() {
+					l.handelReadClose(conn, true, true)
 					return
 				}
 
@@ -173,8 +175,8 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 				return
 			}
 
-			bt = bt[:n]
-			conn.output <- bt
+			//bt = bt[:n]
+			conn.output <- res.GetMsg()
 		}
 	}
 }
@@ -212,11 +214,11 @@ func (l *tcpServer) Shutdown() {
 	l.listener.Close()
 }
 
-func (l *tcpServer) Send(conn *TcpConn, v []byte) {
+func (l *tcpServer) Send(conn *TcpConn, v btmsg.IMsg) {
 	conn.input <- v
 }
 
-func (l *tcpServer) SendById(id uint32, v []byte) {
+func (l *tcpServer) SendById(id uint32, v btmsg.IMsg) {
 	conn, ok := l.getConnById(id)
 	if !ok {
 		log.Err(errors.Errorf("not found conn %d", id))
@@ -250,8 +252,8 @@ func (l *tcpServer) Start() (wg *sync.WaitGroup, err error) {
 			myConn := &TcpConn{
 				conn:     conn,
 				id:       newId,
-				input:    make(chan []byte),
-				output:   make(chan []byte),
+				input:    make(chan btmsg.IMsg),
+				output:   make(chan btmsg.IMsg),
 				waitConn: make(chan bool),
 			}
 
@@ -289,7 +291,7 @@ func (l *tcpServer) listen() (err error) {
 	return
 }
 
-func (l *tcpServer) Broadcast(bt []byte) {
+func (l *tcpServer) Broadcast(bt btmsg.IMsg) {
 	l.conns.Range(func(key, value any) bool {
 		v, ok := value.(*TcpConn)
 		if ok {
