@@ -11,7 +11,7 @@ import (
 )
 
 type CloseCallback func(conn *TcpConn, isServer bool, isClient bool)
-type ReceiveCallback func(conn *TcpConn, bt []byte)
+type ReceiveCallback func(conn *TcpConn, msg btmsg.IMsg)
 
 type ITcpServer interface {
 	Shutdown()
@@ -23,6 +23,7 @@ type ITcpServer interface {
 	ConsumeInput(conn *TcpConn)
 	ConsumeOutput(conn *TcpConn)
 	LoopRead(conn *TcpConn)
+	Broadcast(bt btmsg.IMsg)
 }
 
 var _ ITcpServer = (*tcpServer)(nil)
@@ -47,12 +48,23 @@ type TcpConn struct {
 	waitConn chan bool
 }
 
+func (l *TcpConn) GetRemoteIp() string {
+	if l.conn == nil {
+		return ""
+	}
+	return l.conn.RemoteAddr().String()
+}
+
+func (l *TcpConn) GetId() uint32 {
+	return l.id
+}
+
 func NewTcpServer(port string, r btmsg.IMsgReader) *tcpServer {
 	return &tcpServer{
 		listener: nil,
 		closeCallback: func(conn *TcpConn, isServer bool, isClient bool) {
 		},
-		receiveCallback: func(conn *TcpConn, bt []byte) {
+		receiveCallback: func(conn *TcpConn, msg btmsg.IMsg) {
 		},
 		addr:   ":" + port,
 		conns:  sync.Map{},
@@ -120,8 +132,8 @@ func (l *tcpServer) ConsumeOutput(conn *TcpConn) {
 			return
 		case msg := <-conn.output:
 			id := conn.id
-			fmt.Println("output id", id, "msg", string(msg.Byte()))
-			l.handelReceive(conn, msg.Byte())
+			fmt.Println("output id", id, "msg", msg.GetAct(), string(msg.BodyByte()))
+			l.handelReceive(conn, msg)
 		}
 	}
 }
@@ -138,13 +150,13 @@ func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 			}
 
 			id := conn.id
-			_, err := conn.conn.Write(msg.Byte())
+			_, err := conn.conn.Write(msg.ToByte())
 			if err != nil {
 				log.Err(errors.Wrapf(err, "conn %d write err", id))
 				continue
 			}
 
-			log.Print("input id", id, "msg", string(msg.Byte()))
+			log.Print("input id", id, "msg", msg.GetAct(), string(msg.BodyByte()))
 
 			l.lock.Unlock()
 		}
@@ -188,7 +200,7 @@ func (l *tcpServer) handelReadClose(conn *TcpConn, isServer bool, isClient bool)
 	}
 }
 
-func (l *tcpServer) handelReceive(conn *TcpConn, bt []byte) {
+func (l *tcpServer) handelReceive(conn *TcpConn, bt btmsg.IMsg) {
 	if l.receiveCallback != nil {
 		l.receiveCallback(conn, bt)
 	}

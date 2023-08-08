@@ -7,11 +7,11 @@ import (
 
 type ReaderResult struct {
 	err  error
-	head IHead
+	head *MsgHead
 	body []byte
 }
 
-func NewReaerResult(err error, head IHead, body []byte) *ReaderResult {
+func NewReaerResult(err error, head *MsgHead, body []byte) *ReaderResult {
 	return &ReaderResult{
 		err:  err,
 		head: head,
@@ -40,5 +40,5 @@ func (l *ReaderResult) GetErr() error {
 }
 
 func (l *ReaderResult) GetMsg() IMsg {
-	return nil
+	return NewMsg(l.head, l.body)
 }

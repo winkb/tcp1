@@ -6,11 +6,16 @@ import (
 
 type IHead interface {
 	BodySize() uint32
+	HeadSize() uint32
+	GetAct() uint16
 }
 
 type IMsg interface {
 	IHead
-	Byte() []byte
+	BodyByte() []byte
+	FromStruct(v any) error
+	ToStruct(v any) (any, error)
+	ToByte() []byte
 }
 
 type IReadResult interface {

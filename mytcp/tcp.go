@@ -3,9 +3,9 @@ package mytcp
 import (
 	"fmt"
 	"github.com/rs/zerolog/log"
-	"io"
 	"net"
 	"sync"
+	"tcp1/btmsg"
 )
 
 func MyGoWg(wg *sync.WaitGroup, name string, f func()) {
@@ -46,15 +46,18 @@ func myGo(name string, f func()) {
 	}()
 }
 
+type clientReceiveCallback func(msg btmsg.IMsg)
+type clientCloseCallback func(isServer bool, isClient bool)
+
 type ITcpClient interface {
 	LoopRead()
 	ReleaseChan()
 	LoopWrite()
 	LoopReceive()
 	Close()
-	Send(v string)
-	OnReceive(f func(v []byte))
-	OnClose(f func(isServer bool, isClient bool))
+	Send(v btmsg.IMsg)
+	OnReceive(f clientReceiveCallback)
+	OnClose(f clientCloseCallback)
 	Start() (wg *sync.WaitGroup, err error)
 	HasClosed() chan bool
 }
@@ -62,12 +65,12 @@ type ITcpClient interface {
 var _ ITcpClient = (*tcpClient)(nil)
 
 type tcpClient struct {
-	input           chan string
-	output          chan []byte
+	input           chan btmsg.IMsg
+	output          chan btmsg.IMsg
 	wait            chan bool
 	conn            net.Conn
-	closeCallback   func(isServer bool, isClient bool)
-	receiveCallback func(bt []byte)
+	closeCallback   clientCloseCallback
+	receiveCallback clientReceiveCallback
 	addr            string
 }
 
@@ -104,37 +107,39 @@ func (l *tcpClient) handelReadClose(isServer bool, isClient bool) {
 	}
 }
 
-func (l *tcpClient) handelReceive(bt []byte) {
+func (l *tcpClient) handelReceive(msg btmsg.IMsg) {
 	if l.receiveCallback != nil {
-		l.receiveCallback(bt)
+		l.receiveCallback(msg)
 	}
 }
 
-func (l *tcpClient) OnClose(f func(isServer bool, isClient bool)) {
+func (l *tcpClient) OnClose(f clientCloseCallback) {
 	l.closeCallback = f
 }
 
 func (l *tcpClient) LoopRead() {
+
 	for {
-		bt := make([]byte, 1024)
-		n, err := l.conn.Read(bt)
-		if err == io.EOF {
-			l.handelReadClose(true, false)
-			return
+		r := btmsg.NewReader()
+		res := r.ReadMsg(l.conn)
+		if err := res.GetErr(); err != nil {
+			if res.IsCloseByServer() {
+				l.handelReadClose(true, false)
+				return
+			}
+
+			if res.IsCloseByClient() {
+				l.handelReadClose(false, true)
+				return
+			}
+
+			if err != nil {
+				l.log("conn read", err)
+				continue
+			}
 		}
 
-		if _, ok := err.(*net.OpError); ok {
-			l.handelReadClose(false, true)
-			return
-		}
-
-		if err != nil {
-			l.log("conn read", err)
-			continue
-		}
-
-		msg := bt[:n]
-		l.output <- msg
+		l.output <- res.GetMsg()
 	}
 }
 
@@ -150,8 +155,7 @@ func (l *tcpClient) LoopWrite() {
 				return
 			}
 
-			bt := []byte(msg)
-			_, err := l.conn.Write(bt)
+			_, err := l.conn.Write(msg.ToByte())
 			if err != nil {
 				l.log("conn write", err)
 				continue
@@ -194,18 +198,18 @@ func (l *tcpClient) HasClosed() chan bool {
 	return l.wait
 }
 
-func (l *tcpClient) Send(v string) {
+func (l *tcpClient) Send(v btmsg.IMsg) {
 	l.input <- v
 }
 
-func (l *tcpClient) OnReceive(f func(v []byte)) {
+func (l *tcpClient) OnReceive(f clientReceiveCallback) {
 	l.receiveCallback = f
 }
 
 func NewTcpClient(addr string) *tcpClient {
 	return &tcpClient{
-		input:           make(chan string),
-		output:          make(chan []byte),
+		input:           make(chan btmsg.IMsg),
+		output:          make(chan btmsg.IMsg),
 		wait:            make(chan bool),
 		conn:            nil,
 		closeCallback:   nil,

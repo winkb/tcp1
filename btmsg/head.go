@@ -14,12 +14,18 @@ type MsgHead struct {
 	Size uint32
 }
 
+var _ IHead = (*MsgHead)(nil)
+
 func NewMsgHead() *MsgHead {
 	return &MsgHead{}
 }
 
-func (l *MsgHead) HeadSize() uint16 {
-	return uint16(unsafe.Sizeof(l.Act) + unsafe.Sizeof(l.Size))
+func (l *MsgHead) GetAct() uint16 {
+	return l.Act
+}
+
+func (l *MsgHead) HeadSize() uint32 {
+	return uint32(unsafe.Sizeof(l.Act) + unsafe.Sizeof(l.Size))
 }
 
 func (l *MsgHead) BodySize() uint32 {
@@ -68,4 +74,10 @@ func (l *MsgHead) ReadBody(r io.Reader) (err error) {
 	}
 
 	return nil
+}
+
+func (l *MsgHead) ToBytes() (bt []byte) {
+	var act = byte(l.Act)
+	var size = byte(l.Size)
+	return append(bt, act, size)
 }
