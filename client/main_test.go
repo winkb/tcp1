@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"sync"
+	"tcp1/btmsg"
 	"tcp1/mytcp"
 	"testing"
 	"time"
@@ -24,7 +25,10 @@ func TestShutdown(t *testing.T) {
 
 	time.AfterFunc(time.Second*3, func() {
 		for _, v := range conns {
-			v.Send("shutdown;")
+			msg := newMsg(100, &ShutdownReq{
+				Msg: "exit",
+			})
+			v.Send(msg)
 		}
 	})
 
@@ -34,21 +38,17 @@ func TestShutdown(t *testing.T) {
 func start() (mytcp.ITcpClient, *sync.WaitGroup) {
 	cli := mytcp.NewTcpClient(":989")
 
-	cli.OnReceive(func(v []byte) {
-		if string(v) == "panic;" {
-			panic("panic by user")
-			return
-		}
-		fmt.Println("服务端回复:", string(v))
+	cli.OnReceive(func(v btmsg.IMsg) {
+		fmt.Println(v.GetAct(), string(v.BodyByte()))
 	})
 	cli.OnClose(func(isServer bool, isClient bool) {
 		if isClient {
-			fmt.Println("客户端断开连接")
+			fmt.Println("服务端断开连接")
 		}
 
 		if isServer {
 			cli.ReleaseChan()
-			fmt.Println("服务端断开连接")
+			fmt.Println("我自己断开连接")
 		}
 	})
 

@@ -40,14 +40,14 @@ var routes = map[uint16]*RouteInfo{}
 func init() {
 	routes[100] = &RouteInfo{
 		Handle: func(msg btmsg.IMsg, req any) {
-			handleShutdownReply(msg, req.(ShutdownRsp))
+			handleShutdownReply(msg, req.(*ShutdownRsp))
 		},
-		Info: ShutdownRsp{},
+		Info: &ShutdownRsp{},
 	}
 }
 
-func handleShutdownReply(msg btmsg.IMsg, req ShutdownRsp) {
-	fmt.Println(req.Reason)
+func handleShutdownReply(msg btmsg.IMsg, req *ShutdownRsp) {
+	fmt.Println("shutdown notify ", req.Reason)
 }
 
 func main() {
@@ -69,14 +69,15 @@ func main() {
 
 		r.Handle(v, toStruct)
 	})
+
 	cli.OnClose(func(isServer bool, isClient bool) {
 		if isClient {
-			fmt.Println("客户端断开连接")
+			fmt.Println("服务端断开连接")
 		}
 
 		if isServer {
 			cli.ReleaseChan()
-			fmt.Println("服务端断开连接")
+			fmt.Println("我自己端口连接")
 		}
 	})
 
@@ -93,6 +94,7 @@ func main() {
 			cli.Close()
 		}()
 		for scan.Scan() {
+
 			txt := scan.Text()
 			if txt == exitLimit {
 				return
@@ -102,7 +104,14 @@ func main() {
 			case <-cli.HasClosed():
 				return
 			default:
-				cli.Send(newMsg(100, ShutdownReq{
+				if txt == "shutdown" {
+					cli.Send(newMsg(100, ShutdownReq{
+						Msg: txt,
+					}))
+					continue
+				}
+
+				cli.Send(newMsg(200, ShutdownReq{
 					Msg: txt,
 				}))
 			}

@@ -144,6 +144,7 @@ func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 		case msg := <-conn.input:
 			l.lock.Lock()
 			if l.stop != 0 {
+				l.lock.Unlock()
 				continue
 			}
 
@@ -151,6 +152,8 @@ func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 			_, err := conn.conn.Write(msg.ToSendByte())
 			if err != nil {
 				log.Err(errors.Wrapf(err, "conn %d write err", id))
+
+				l.lock.Unlock()
 				continue
 			}
 
@@ -218,6 +221,7 @@ func (l *tcpServer) Shutdown() {
 	}
 
 	l.stop = 2
+
 	l.conns.Range(func(key, value any) bool {
 		v, ok := value.(*TcpConn)
 		if ok {
@@ -226,10 +230,19 @@ func (l *tcpServer) Shutdown() {
 		return true
 	})
 
-	l.listener.Close()
+	err := l.listener.Close()
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
 func (l *tcpServer) Send(conn *TcpConn, v btmsg.IMsg) {
+	l.lock.Lock()
+	if l.stop != 0 {
+		return
+	}
+	l.lock.Unlock()
+
 	conn.input <- v
 }
 

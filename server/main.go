@@ -31,6 +31,13 @@ type ShutdownRsp struct {
 var routes = map[uint16]*RouteInfo{}
 
 func init() {
+	routes[0] = &RouteInfo{
+		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
+			handleDefault(conn, msg, req)
+		},
+		Info: nil,
+	}
+
 	routes[100] = &RouteInfo{
 		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
 			handleShutdown(conn, msg, req.(*ShutdownReq))
@@ -44,6 +51,12 @@ func logHandle(name string, t time.Time) func() {
 		fmt.Println("handle", name, "in")
 		fmt.Println("handle", name, "out", numfn.ToStr(time.Now().Sub(t).Nanoseconds())+"ns")
 	}
+}
+
+func handleDefault(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
+	defer logHandle("default", time.Now())
+
+	fmt.Println("sever receive default msg ", req)
 }
 
 func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req *ShutdownReq) {
@@ -60,8 +73,9 @@ func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req *ShutdownReq) {
 	}
 
 	server.Broadcast(msg)
-
-	server.Shutdown()
+	time.AfterFunc(time.Second, func() {
+		server.Shutdown()
+	})
 }
 
 func main() {
@@ -71,19 +85,34 @@ func main() {
 		panic(err)
 	}
 
+	server.OnClose(func(conn *mytcp.TcpConn, isServer bool, isClient bool) {
+		if isClient {
+			fmt.Println("客户端断开连接")
+		}
+
+		if isServer {
+			fmt.Println("我自己断开连接")
+		}
+	})
+
 	server.OnReceive(func(conn *mytcp.TcpConn, msg btmsg.IMsg) {
 		act := msg.GetAct()
 		hv, ok := routes[act]
 		if !ok {
 			fmt.Println("not found handle", act)
-			return
+
+			// 走默认路由
+			act = 0
+			hv = routes[act]
 		}
 
 		var info = hv.Info
-		info, err = msg.ToStruct(hv.Info)
-		if err != nil {
-			fmt.Println(err)
-			return
+		if info != nil {
+			info, err = msg.ToStruct(hv.Info)
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
 		}
 
 		hv.Handle(conn, msg, info)
