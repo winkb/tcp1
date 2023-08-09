@@ -16,6 +16,7 @@ type ServerReceiveCallback func(conn *TcpConn, msg btmsg.IMsg)
 type ITcpServer interface {
 	Shutdown()
 	Send(conn *TcpConn, v btmsg.IMsg)
+	SendById(id uint32, v btmsg.IMsg)
 	OnReceive(f ServerReceiveCallback)
 	OnClose(f ServerCloseCallback)
 	Start() (wg *sync.WaitGroup, err error)
