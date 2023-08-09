@@ -131,8 +131,6 @@ func (l *tcpServer) ConsumeOutput(conn *TcpConn) {
 		case <-conn.waitConn:
 			return
 		case msg := <-conn.output:
-			id := conn.id
-			fmt.Println("output id", id, "msg", msg.GetAct(), string(msg.BodyByte()))
 			l.handelReceive(conn, msg)
 		}
 	}

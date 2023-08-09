@@ -116,9 +116,6 @@ func (l *tcpClient) LoopWrite() {
 				return
 			}
 
-			sendBt := msg.ToSendByte()
-			fmt.Println("send", sendBt)
-
 			_, err := l.conn.Write(msg.ToSendByte())
 			if err != nil {
 				l.log("conn write", err)
