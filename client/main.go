@@ -4,9 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"github.com/rs/zerolog/log"
+	"github.com/winkb/tcp1/btmsg"
+	"github.com/winkb/tcp1/mytcp"
 	"os"
-	"tcp1/btmsg"
-	"tcp1/mytcp"
 )
 
 type RouteHandle func(msg btmsg.IMsg, req any)

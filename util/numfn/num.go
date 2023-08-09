@@ -2,8 +2,8 @@ package numfn
 
 import (
 	"fmt"
+	"github.com/winkb/tcp1/util/types"
 	"strconv"
-	"tcp1/util/types"
 )
 
 func ToStr[T types.Number](v T) string {

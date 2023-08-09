@@ -3,9 +3,9 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"github.com/winkb/tcp1/mytcp"
 	"os"
 	"sync"
-	"tcp1/mytcp"
 	"testing"
 	"time"
 )

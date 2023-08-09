@@ -2,12 +2,12 @@ package main
 
 import (
 	"fmt"
+	"github.com/winkb/tcp1/btmsg"
+	"github.com/winkb/tcp1/mytcp"
+	"github.com/winkb/tcp1/util/numfn"
 	"os"
 	"os/signal"
 	"syscall"
-	"tcp1/btmsg"
-	"tcp1/mytcp"
-	"tcp1/util/numfn"
 	"time"
 )
 

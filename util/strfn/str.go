@@ -1,8 +1,8 @@
 package strfn
 
 import (
+	"github.com/winkb/tcp1/util/types"
 	"strconv"
-	"tcp1/util/types"
 )
 
 func ToInt[T types.Number](v string) T {

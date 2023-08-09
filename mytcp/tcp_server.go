@@ -4,10 +4,10 @@ import (
 	"fmt"
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
+	"github.com/winkb/tcp1/btmsg"
 	"net"
 	"sync"
 	"sync/atomic"
-	"tcp1/btmsg"
 )
 
 type ServerCloseCallback func(conn *TcpConn, isServer bool, isClient bool)

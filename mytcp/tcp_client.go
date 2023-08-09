@@ -2,9 +2,9 @@ package mytcp
 
 import (
 	"fmt"
+	"github.com/winkb/tcp1/btmsg"
 	"net"
 	"sync"
-	"tcp1/btmsg"
 )
 
 type clientReceiveCallback func(msg btmsg.IMsg)
