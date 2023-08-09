@@ -15,7 +15,6 @@ type RouteHandle func(conn *mytcp.TcpConn, msg btmsg.IMsg)
 
 type RouteInfo struct {
 	Handle RouteHandle
-	Info   any
 }
 
 var server mytcp.ITcpServer
