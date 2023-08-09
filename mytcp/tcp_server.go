@@ -10,14 +10,14 @@ import (
 	"tcp1/btmsg"
 )
 
-type CloseCallback func(conn *TcpConn, isServer bool, isClient bool)
-type ReceiveCallback func(conn *TcpConn, msg btmsg.IMsg)
+type ServerCloseCallback func(conn *TcpConn, isServer bool, isClient bool)
+type ServerReceiveCallback func(conn *TcpConn, msg btmsg.IMsg)
 
 type ITcpServer interface {
 	Shutdown()
 	Send(conn *TcpConn, v btmsg.IMsg)
-	OnReceive(f ReceiveCallback)
-	OnClose(f CloseCallback)
+	OnReceive(f ServerReceiveCallback)
+	OnClose(f ServerCloseCallback)
 	Start() (wg *sync.WaitGroup, err error)
 	LoopAccept(f func(conn net.Conn))
 	ConsumeInput(conn *TcpConn)
@@ -30,8 +30,8 @@ var _ ITcpServer = (*tcpServer)(nil)
 
 type tcpServer struct {
 	listener        net.Listener
-	closeCallback   CloseCallback
-	receiveCallback ReceiveCallback
+	closeCallback   ServerCloseCallback
+	receiveCallback ServerReceiveCallback
 	addr            string
 	conns           sync.Map
 	lastId          uint32
@@ -150,7 +150,7 @@ func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 			}
 
 			id := conn.id
-			_, err := conn.conn.Write(msg.ToByte())
+			_, err := conn.conn.Write(msg.ToSendByte())
 			if err != nil {
 				log.Err(errors.Wrapf(err, "conn %d write err", id))
 				continue
@@ -245,11 +245,11 @@ func (l *tcpServer) SendById(id uint32, v btmsg.IMsg) {
 	l.Send(conn, v)
 }
 
-func (l *tcpServer) OnReceive(f ReceiveCallback) {
+func (l *tcpServer) OnReceive(f ServerReceiveCallback) {
 	l.receiveCallback = f
 }
 
-func (l *tcpServer) OnClose(f CloseCallback) {
+func (l *tcpServer) OnClose(f ServerCloseCallback) {
 	l.closeCallback = f
 }
 

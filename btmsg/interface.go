@@ -15,7 +15,7 @@ type IMsg interface {
 	BodyByte() []byte
 	FromStruct(v any) error
 	ToStruct(v any) (any, error)
-	ToByte() []byte
+	ToSendByte() []byte
 }
 
 type IReadResult interface {

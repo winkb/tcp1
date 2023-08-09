@@ -23,6 +23,7 @@ func (l *Msg) BodyByte() []byte {
 	return l.bodyBt
 }
 
+// v is a pointer
 func (l *Msg) FromStruct(v any) (err error) {
 	var bt []byte
 	bt, err = json.Marshal(v)
@@ -36,6 +37,7 @@ func (l *Msg) FromStruct(v any) (err error) {
 	return nil
 }
 
+// v is a pointer
 func (l *Msg) ToStruct(v any) (any, error) {
 	err := json.Unmarshal(l.bodyBt, v)
 	if err != nil {
@@ -45,7 +47,8 @@ func (l *Msg) ToStruct(v any) (any, error) {
 	return v, nil
 }
 
-func (l *Msg) ToByte() []byte {
+// 除非只需要发送head,否则需要在FromStruct之后执行
+func (l *Msg) ToSendByte() []byte {
 	l.MsgHead.Size = uint32(len(l.bodyBt))
 
 	bt := l.MsgHead.ToBytes()

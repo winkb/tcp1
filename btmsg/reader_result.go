@@ -11,7 +11,7 @@ type ReaderResult struct {
 	body []byte
 }
 
-func NewReaerResult(err error, head *MsgHead, body []byte) *ReaderResult {
+func NewReaderResult(err error, head *MsgHead, body []byte) *ReaderResult {
 	return &ReaderResult{
 		err:  err,
 		head: head,

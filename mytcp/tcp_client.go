@@ -2,49 +2,10 @@ package mytcp
 
 import (
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"net"
 	"sync"
 	"tcp1/btmsg"
 )
-
-func MyGoWg(wg *sync.WaitGroup, name string, f func()) {
-	wg.Add(1)
-
-	go func() {
-		defer func() {
-			if err := recover(); err != nil {
-				log.Print(fmt.Sprintf("goroutine %s %s", name, err))
-
-				MyGoWg(wg, name, f)
-
-				wg.Done()
-				return
-			}
-
-			fmt.Printf("goroutine %s defer\n", name)
-
-			wg.Done()
-		}()
-
-		f()
-	}()
-}
-
-func myGo(name string, f func()) {
-	go func() {
-		defer func() {
-			if err := recover(); err != nil {
-				log.Print(name, err)
-				return
-			}
-
-			fmt.Printf("goroutine %s defer", name)
-		}()
-
-		f()
-	}()
-}
 
 type clientReceiveCallback func(msg btmsg.IMsg)
 type clientCloseCallback func(isServer bool, isClient bool)
@@ -155,10 +116,10 @@ func (l *tcpClient) LoopWrite() {
 				return
 			}
 
-			sendBt := msg.ToByte()
+			sendBt := msg.ToSendByte()
 			fmt.Println("send", sendBt)
 
-			_, err := l.conn.Write(msg.ToByte())
+			_, err := l.conn.Write(msg.ToSendByte())
 			if err != nil {
 				l.log("conn write", err)
 				continue
