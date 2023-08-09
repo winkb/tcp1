@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-type RouteHandle func(conn *mytcp.TcpConn, msg btmsg.IMsg, req any)
+type RouteHandle func(conn *mytcp.TcpConn, msg btmsg.IMsg)
 
 type RouteInfo struct {
 	Handle RouteHandle
@@ -32,18 +32,21 @@ var routes = map[uint16]*RouteInfo{}
 
 func init() {
 	routes[0] = &RouteInfo{
-		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
-			handleDefault(conn, msg, req)
+		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg) {
+			handleDefault(conn, msg, nil)
 		},
-		Info: nil,
 	}
 
 	routes[100] = &RouteInfo{
-		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
-			handleShutdown(conn, msg, req.(*ShutdownReq))
+		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg) {
+			handleShutdown(conn, msg, parseReq(ShutdownReq{}, msg))
 		},
-		Info: &ShutdownReq{},
 	}
+}
+
+func parseReq[T any](v T, msg btmsg.IMsg) T {
+	_ = msg.FromStruct(&v)
+	return v
 }
 
 func logHandle(name string, t time.Time) func() {
@@ -59,7 +62,7 @@ func handleDefault(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
 	fmt.Println("sever receive default msg ", req)
 }
 
-func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req *ShutdownReq) {
+func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req ShutdownReq) {
 	defer logHandle("shutdown", time.Now())
 
 	fmt.Println("sever will shutdown ", req.Msg)
@@ -106,16 +109,7 @@ func main() {
 			hv = routes[act]
 		}
 
-		var info = hv.Info
-		if info != nil {
-			info, err = msg.ToStruct(hv.Info)
-			if err != nil {
-				fmt.Println(err)
-				return
-			}
-		}
-
-		hv.Handle(conn, msg, info)
+		hv.Handle(conn, msg)
 	})
 
 	chSingle := make(chan os.Signal)

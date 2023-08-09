@@ -54,10 +54,10 @@ func (l *Collect) Handle(txt string) bool {
 func (l *Collect) GetData() [][]string {
 	return [][]string{
 		{
-			"git", "tag", "-a", l.data.Version, "-m", l.data.Version,
+			"git", "tag", "-a", "v" + l.data.Version, "-m", l.data.Version,
 		},
 		{
-			"git", "push", "origin", l.data.Version,
+			"git", "push", "origin", "v" + l.data.Version,
 		},
 	}
 }

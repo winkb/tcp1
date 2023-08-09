@@ -6,7 +6,7 @@ import (
 )
 
 // 1.0.0
-var versionReg = regexp.MustCompile(`^v?(\d)(\.\d){0,2}$`)
+var versionReg = regexp.MustCompile(`^v?((\d)(\.\d){0,2})$`)
 
 type VersionCollect struct {
 }
@@ -20,12 +20,12 @@ func (l *VersionCollect) Title(c *Collect) {
 }
 
 func (l *VersionCollect) Collect(txt string, data *InputData) bool {
-	allString := versionReg.FindAllString(txt, -1)
+	allString := versionReg.FindStringSubmatch(txt)
 	if len(allString) == 0 {
 		return false
 	}
 
-	version := allString[0]
+	version := allString[1]
 
 	data.Version = version
 
