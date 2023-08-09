@@ -164,11 +164,17 @@ func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 }
 
 func (l *tcpServer) LoopRead(conn *TcpConn) {
+	defer func() {
+		select {
+		case <-conn.waitConn:
+		default:
+			close(conn.waitConn)
+		}
+	}()
 	for {
 		select {
 		case <-conn.waitConn:
 			return
-		case <-conn.output:
 		default:
 			res := l.reader.ReadMsg(conn.conn)
 			err := res.GetErr()
@@ -187,7 +193,6 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 				return
 			}
 
-			//bt = bt[:n]
 			conn.output <- res.GetMsg()
 		}
 	}

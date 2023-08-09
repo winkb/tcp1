@@ -33,51 +33,38 @@ func (l *MsgHead) BodySize() uint32 {
 }
 
 func (l *MsgHead) Read(r io.Reader) (err error) {
+	defer func() {
+		if err != nil {
+			fmt.Println(err)
+		}
+	}()
+
 	var headSize = l.HeadSize()
 	var n int
 	var hdBt = make([]byte, headSize)
 
-	n, err = r.Read(hdBt)
+	n, err = io.ReadFull(r, hdBt)
 	if err != nil {
 		return err
 	}
 
 	if n != int(headSize) {
-		return fmt.Errorf("head len err got %v, expect %v", n, headSize)
+		err = fmt.Errorf("head len err got %v, expect %v", n, headSize)
+		return
 	}
 
 	err = binary.Read(bytes.NewReader(hdBt), binary.LittleEndian, l)
 	if err != nil {
-		return errors.Wrap(err, "byte to head")
+		err = errors.Wrap(err, "byte to head")
+		return
 	}
 
 	return nil
 }
 
-func (l *MsgHead) ReadBody(r io.Reader) (err error) {
-	var headSize = l.BodySize()
-	var n int
-	var hdBt = make([]byte, headSize)
-
-	n, err = r.Read(hdBt)
-	if err != nil {
-		return err
-	}
-
-	if n != int(headSize) {
-		return fmt.Errorf("head len err got %v, expect %v", n, headSize)
-	}
-
-	err = binary.Read(bytes.NewReader(hdBt), binary.LittleEndian, l)
-	if err != nil {
-		return errors.Wrap(err, "byte to head")
-	}
-
-	return nil
-}
-
-func (l *MsgHead) ToBytes() (bt []byte) {
-	var act = byte(l.Act)
-	var size = byte(l.Size)
-	return append(bt, act, size)
+func (l *MsgHead) ToBytes() []byte {
+	bt := make([]byte, 0)
+	bf := bytes.NewBuffer(bt)
+	_ = binary.Write(bf, binary.LittleEndian, l)
+	return bf.Bytes()
 }

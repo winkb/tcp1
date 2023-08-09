@@ -1,8 +1,7 @@
 package btmsg
 
 import (
-	"bytes"
-	"encoding/binary"
+	"encoding/json"
 	"github.com/pkg/errors"
 )
 
@@ -25,20 +24,20 @@ func (l *Msg) BodyByte() []byte {
 }
 
 func (l *Msg) FromStruct(v any) (err error) {
-	var bt = make([]byte, l.BodySize())
-	var w = bytes.NewBuffer(bt)
-	err = binary.Write(w, binary.LittleEndian, v)
+	var bt []byte
+	bt, err = json.Marshal(v)
 	if err != nil {
 		err = errors.Wrap(err, "struct to msg")
 		return
 	}
 
+	l.bodyBt = bt
+
 	return nil
 }
 
 func (l *Msg) ToStruct(v any) (any, error) {
-	var bt = make([]byte, l.BodySize())
-	err := binary.Read(bytes.NewReader(bt), binary.LittleEndian, v)
+	err := json.Unmarshal(l.bodyBt, v)
 	if err != nil {
 		return v, errors.Wrap(err, "msg to struct")
 	}
@@ -47,7 +46,10 @@ func (l *Msg) ToStruct(v any) (any, error) {
 }
 
 func (l *Msg) ToByte() []byte {
+	l.MsgHead.Size = uint32(len(l.bodyBt))
+
 	bt := l.MsgHead.ToBytes()
 	bt = append(bt, l.bodyBt...)
+
 	return bt
 }

@@ -24,11 +24,11 @@ func (l *Reader) ReadMsg(r io.Reader) (res IReadResult) {
 	}
 
 	var bodySize = head.BodySize()
-	var body = make([]byte, bodySize)
+	var bt = make([]byte, bodySize)
 
 	{
 		var n int
-		n, err = r.Read(body)
+		n, err = io.ReadFull(r, bt)
 		if err != nil {
 			return NewReaerResult(err, head, nil)
 		}
@@ -38,5 +38,5 @@ func (l *Reader) ReadMsg(r io.Reader) (res IReadResult) {
 		}
 	}
 
-	return NewReaerResult(err, head, body)
+	return NewReaerResult(err, head, bt)
 }

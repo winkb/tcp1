@@ -3,6 +3,7 @@ package btmsg
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"testing"
 	"unsafe"
 )
@@ -25,4 +26,48 @@ func TestBtToHead(t *testing.T) {
 	}
 
 	t.Logf("%v", h)
+}
+
+func TestHeadBytes2(t *testing.T) {
+	var h = &MsgHead{}
+
+	h.Act = 100
+	h.Size = 12
+
+	bt := h.ToBytes()
+	t.Log(bt)
+}
+
+func TestWriteHead(t *testing.T) {
+	var h = &MsgHead{
+		Act:  100,
+		Size: 12,
+	}
+	var bt = make([]byte, 0)
+	var bf = bytes.NewBuffer(bt)
+	err := binary.Write(bf, binary.LittleEndian, h)
+	t.Log(err)
+
+	t.Log(bf.Bytes())
+}
+
+type req1 struct {
+	Msg uint32
+}
+
+func TestWriteStructToBinary(t *testing.T) {
+	var r = req1{
+		Msg: 10,
+	}
+
+	marshal, err2 := json.Marshal(r)
+	t.Log(err2)
+	t.Log(marshal)
+
+	// 下面是错误的方法
+	var bt = make([]byte, 0)
+	var bf = bytes.NewBuffer(bt)
+	err := binary.Write(bf, binary.LittleEndian, r)
+	t.Log(err)
+	t.Log(bf.Bytes())
 }

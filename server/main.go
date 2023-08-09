@@ -33,9 +33,9 @@ var routes = map[uint16]*RouteInfo{}
 func init() {
 	routes[100] = &RouteInfo{
 		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
-			handleShutdown(conn, msg, req.(ShutdownReq))
+			handleShutdown(conn, msg, req.(*ShutdownReq))
 		},
-		Info: ShutdownReq{},
+		Info: &ShutdownReq{},
 	}
 }
 
@@ -46,7 +46,7 @@ func logHandle(name string, t time.Time) func() {
 	}
 }
 
-func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req ShutdownReq) {
+func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req *ShutdownReq) {
 	defer logHandle("shutdown", time.Now())
 
 	fmt.Println("sever will shutdown ", req.Msg)

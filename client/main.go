@@ -30,12 +30,12 @@ func newMsg(act uint16, req any) btmsg.IMsg {
 	res := btmsg.NewMsg(hd, nil)
 	err := res.FromStruct(req)
 	if err != nil {
-		log.Err(err)
+		fmt.Println(err)
 	}
 	return res
 }
 
-var routes map[uint16]*RouteInfo = map[uint16]*RouteInfo{}
+var routes = map[uint16]*RouteInfo{}
 
 func init() {
 	routes[100] = &RouteInfo{
