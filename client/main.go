@@ -3,17 +3,15 @@ package main
 import (
 	"bufio"
 	"fmt"
-	"github.com/rs/zerolog/log"
 	"github.com/winkb/tcp1/btmsg"
 	"github.com/winkb/tcp1/mytcp"
 	"os"
 )
 
-type RouteHandle func(msg btmsg.IMsg, req any)
+type RouteHandle func(msg btmsg.IMsg)
 
 type RouteInfo struct {
 	Handle RouteHandle
-	Info   any
 }
 
 type ShutdownReq struct {
@@ -39,14 +37,18 @@ var routes = map[uint16]*RouteInfo{}
 
 func init() {
 	routes[100] = &RouteInfo{
-		Handle: func(msg btmsg.IMsg, req any) {
-			handleShutdownReply(msg, req.(*ShutdownRsp))
+		Handle: func(msg btmsg.IMsg) {
+			handleShutdownReply(msg, parseReq(ShutdownRsp{}, msg))
 		},
-		Info: &ShutdownRsp{},
 	}
 }
 
-func handleShutdownReply(msg btmsg.IMsg, req *ShutdownRsp) {
+func parseReq[T any](v T, msg btmsg.IMsg) T {
+	_, _ = msg.ToStruct(&v)
+	return v
+}
+
+func handleShutdownReply(msg btmsg.IMsg, req ShutdownRsp) {
 	fmt.Println("shutdown notify ", req.Reason)
 }
 
@@ -61,13 +63,7 @@ func main() {
 			return
 		}
 
-		toStruct, err := v.ToStruct(r.Info)
-		if err != nil {
-			log.Err(err)
-			return
-		}
-
-		r.Handle(v, toStruct)
+		r.Handle(v)
 	})
 
 	cli.OnClose(func(isServer bool, isClient bool) {
