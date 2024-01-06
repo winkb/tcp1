@@ -133,6 +133,10 @@ func (l *tcpServer) saveConn(id uint32, conn *TcpConn) {
 	l.conns.Store(id, conn)
 }
 
+func (l *tcpServer) removeConn(id uint32) {
+	l.conns.Delete(id)
+}
+
 func (l *tcpServer) ConsumeOutput(conn *TcpConn) {
 	for {
 		select {
@@ -201,6 +205,7 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 			conn.lock.Lock()
 			if err != nil {
 				conn.isClose = true
+				l.removeConn(conn.id)
 			}
 			conn.lock.Unlock()
 
@@ -270,9 +275,12 @@ func (l *tcpServer) Send(conn *TcpConn, v btmsg.IMsg) {
 	}
 	l.lock.RUnlock()
 
-	conn.lock.Lock()
-	conn.isClose = true
-	conn.lock.Unlock()
+	conn.lock.RLock()
+	if conn.isClose {
+		conn.lock.RUnlock()
+		return
+	}
+	conn.lock.RUnlock()
 
 	conn.input <- v
 }
