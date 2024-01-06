@@ -53,6 +53,7 @@ func handleShutdownReply(msg btmsg.IMsg, req ShutdownRsp) {
 }
 
 func main() {
+
 	cli := mytcp.NewTcpClient(":989")
 
 	cli.OnReceive(func(v btmsg.IMsg) {

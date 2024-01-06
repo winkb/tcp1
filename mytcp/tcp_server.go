@@ -2,12 +2,14 @@ package mytcp
 
 import (
 	"fmt"
-	"github.com/pkg/errors"
-	"github.com/rs/zerolog/log"
-	"github.com/winkb/tcp1/btmsg"
 	"net"
 	"sync"
 	"sync/atomic"
+	"time"
+
+	"github.com/pkg/errors"
+	"github.com/rs/zerolog/log"
+	"github.com/winkb/tcp1/btmsg"
 )
 
 type ServerCloseCallback func(conn *TcpConn, isServer bool, isClient bool)
@@ -37,8 +39,9 @@ type tcpServer struct {
 	conns           sync.Map
 	lastId          uint32
 	stop            int
-	lock            sync.Mutex
+	lock            sync.RWMutex
 	reader          btmsg.IMsgReader
+	timeout         time.Duration
 }
 
 type TcpConn struct {
@@ -47,6 +50,8 @@ type TcpConn struct {
 	input    chan btmsg.IMsg
 	output   chan btmsg.IMsg
 	waitConn chan bool
+	lock     sync.RWMutex
+	isClose  bool
 }
 
 func (l *TcpConn) GetRemoteIp() string {
@@ -67,12 +72,13 @@ func NewTcpServer(port string, r btmsg.IMsgReader) *tcpServer {
 		},
 		receiveCallback: func(conn *TcpConn, msg btmsg.IMsg) {
 		},
-		addr:   ":" + port,
-		conns:  sync.Map{},
-		lastId: 0,
-		stop:   0,
-		lock:   sync.Mutex{},
-		reader: r,
+		addr:    ":" + port,
+		conns:   sync.Map{},
+		lastId:  0,
+		stop:    0,
+		lock:    sync.RWMutex{},
+		reader:  r,
+		timeout: time.Second * 3,
 	}
 }
 
@@ -89,14 +95,15 @@ func (l *tcpServer) LoopAccept(f func(conn net.Conn)) {
 			return
 		}
 
-		l.lock.Lock()
+		l.lock.RLock()
 		if l.stop != 0 {
 			fmt.Println("server is stop")
+			l.lock.RUnlock()
 			continue
 		}
 
 		f(accept)
-		l.lock.Unlock()
+		l.lock.RUnlock()
 	}
 }
 
@@ -137,30 +144,41 @@ func (l *tcpServer) ConsumeOutput(conn *TcpConn) {
 	}
 }
 
+func (l *tcpServer) writeSend(conn *TcpConn, msg btmsg.IMsg) {
+	l.lock.RLock()
+	defer l.lock.Unlock()
+
+	if l.stop != 0 {
+		return
+	}
+
+	_ = conn.conn.SetWriteDeadline(time.Now().Add(l.timeout))
+	id := conn.id
+
+	var err error
+	conn.lock.RLock()
+	defer conn.lock.RUnlock()
+	if conn.isClose {
+		log.Print("conn is closed, drop msg")
+		return
+	}
+
+	_, err = conn.conn.Write(msg.ToSendByte())
+	if err != nil {
+		log.Err(errors.Wrapf(err, "conn %d write err", id))
+		return
+	}
+
+	log.Print("input id", id, "msg", msg.GetAct(), string(msg.BodyByte()))
+}
+
 func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 	for {
 		select {
 		case <-conn.waitConn:
 			return
 		case msg := <-conn.input:
-			l.lock.Lock()
-			if l.stop != 0 {
-				l.lock.Unlock()
-				continue
-			}
-
-			id := conn.id
-			_, err := conn.conn.Write(msg.ToSendByte())
-			if err != nil {
-				log.Err(errors.Wrapf(err, "conn %d write err", id))
-
-				l.lock.Unlock()
-				continue
-			}
-
-			log.Print("input id", id, "msg", msg.GetAct(), string(msg.BodyByte()))
-
-			l.lock.Unlock()
+			l.writeSend(conn, msg)
 		}
 	}
 }
@@ -180,7 +198,14 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 		default:
 			res := l.reader.ReadMsg(conn.conn)
 			err := res.GetErr()
+			conn.lock.Lock()
 			if err != nil {
+				conn.isClose = true
+			}
+			conn.lock.Unlock()
+
+			if err != nil {
+
 				if res.IsCloseByClient() {
 					l.handelReadClose(conn, false, true)
 					return
@@ -238,11 +263,16 @@ func (l *tcpServer) Shutdown() {
 }
 
 func (l *tcpServer) Send(conn *TcpConn, v btmsg.IMsg) {
-	l.lock.Lock()
+	l.lock.RLock()
 	if l.stop != 0 {
+		l.lock.RUnlock()
 		return
 	}
-	l.lock.Unlock()
+	l.lock.RUnlock()
+
+	conn.lock.Lock()
+	conn.isClose = true
+	conn.lock.Unlock()
 
 	conn.input <- v
 }
@@ -323,9 +353,10 @@ func (l *tcpServer) listen() (err error) {
 func (l *tcpServer) Broadcast(bt btmsg.IMsg) {
 	l.conns.Range(func(key, value any) bool {
 		v, ok := value.(*TcpConn)
-		if ok {
-			v.input <- bt
+		if !ok {
+			return false
 		}
+		l.Send(v, bt)
 		return true
 	})
 }

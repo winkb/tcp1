@@ -2,13 +2,15 @@ package main
 
 import (
 	"fmt"
-	"github.com/winkb/tcp1/btmsg"
-	"github.com/winkb/tcp1/mytcp"
-	"github.com/winkb/tcp1/util/numfn"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/winkb/tcp1/btmsg"
+	"github.com/winkb/tcp1/mytcp"
+	"github.com/winkb/tcp1/util/numfn"
 )
 
 type RouteHandle func(conn *mytcp.TcpConn, msg btmsg.IMsg)
@@ -87,6 +89,8 @@ func main() {
 		panic(err)
 	}
 
+	go startHttp()
+
 	server.OnClose(func(conn *mytcp.TcpConn, isServer bool, isClient bool) {
 		if isClient {
 			fmt.Println("客户端断开连接")
@@ -131,4 +135,14 @@ func main() {
 
 	wg.Wait()
 	close(chSingle)
+}
+
+func startHttp() {
+
+	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
+		fmt.Println("http get")
+	})
+
+	http.ListenAndServe(":81", nil)
+
 }

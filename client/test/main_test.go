@@ -1,25 +1,28 @@
 package main
 
 import (
-	"bufio"
 	"fmt"
-	"github.com/winkb/tcp1/mytcp"
-	"os"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/winkb/tcp1/btmsg"
+	"github.com/winkb/tcp1/mytcp"
 )
 
 func startClient() {
+
 	cli := mytcp.NewTcpClient(":989")
 
-	cli.OnReceive(func(v []byte) {
+	cli.OnReceive(func(msg btmsg.IMsg) {
+		var v = msg.BodyByte()
+
 		if string(v) == "panic;" {
 			panic("panic by user")
-			return
 		}
 		fmt.Println("服务端回复:", string(v))
 	})
+
 	cli.OnClose(func(isServer bool, isClient bool) {
 		if isClient {
 			fmt.Println("客户端断开连接")
@@ -36,26 +39,12 @@ func startClient() {
 		panic(err)
 	}
 
-	scan := bufio.NewScanner(os.Stdin)
 	const exitLimit = "exit;"
 
 	mytcp.MyGoWg(wg, "scan_input", func() {
 		defer func() {
 			cli.Close()
 		}()
-		for scan.Scan() {
-			txt := scan.Text()
-			if txt == exitLimit {
-				return
-			}
-
-			select {
-			case <-cli.HasClosed():
-				return
-			default:
-				cli.Send(txt)
-			}
-		}
 	})
 
 	wg.Wait()
@@ -65,6 +54,40 @@ func TestClientMul(t *testing.T) {
 	wg := sync.WaitGroup{}
 
 	const N = 100
+
+	ts := mytcp.NewTcpServer("989", btmsg.NewReader())
+
+	var num int32 = 0
+	var lock sync.RWMutex
+
+	go func() {
+
+		wg2, err2 := ts.Start()
+		if err2 != nil {
+			panic(err2)
+		}
+
+		ts.OnClose(func(conn *mytcp.TcpConn, isServer, isClient bool) {
+			if isClient {
+				lock.Lock()
+				num++
+
+				if num >= N {
+					ts.Shutdown()
+				}
+
+				lock.Unlock()
+
+				t.Log("conn close by client self")
+			}
+		})
+
+		wg2.Wait()
+
+		t.Log("close_all_conn", num)
+	}()
+
+	time.Sleep(time.Second)
 
 	wg.Add(N)
 	for i := 0; i < N; i++ {
@@ -78,5 +101,5 @@ func TestClientMul(t *testing.T) {
 
 	wg.Wait()
 
-	time.Sleep(time.Second * 6)
+	time.Sleep(time.Second * 2)
 }
