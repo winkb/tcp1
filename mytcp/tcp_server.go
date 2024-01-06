@@ -150,7 +150,7 @@ func (l *tcpServer) ConsumeOutput(conn *TcpConn) {
 
 func (l *tcpServer) writeSend(conn *TcpConn, msg btmsg.IMsg) {
 	l.lock.RLock()
-	defer l.lock.Unlock()
+	defer l.lock.RUnlock()
 
 	if l.stop != 0 {
 		return
