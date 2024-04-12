@@ -1,15 +1,18 @@
 package btmsg
 
-import (
-	"io"
-)
-
 type IHead interface {
 	BodySize() uint32
 	HeadSize() uint32
 	GetAct() uint16
 	SetSize(size uint32)
 	ToBytes()[]byte
+	Read(r IReader) (err error)
+	ReadBody(r IReader) (err error, bt []byte)
+}
+
+type IReader interface{
+	ReadMessage() (messageType int, p []byte, err error)
+	Read(b []byte) (n int, err error)
 }
 
 type IMsg interface {
@@ -31,5 +34,5 @@ type IReadResult interface {
 }
 
 type IMsgReader interface {
-	ReadMsg(r io.Reader) (res IReadResult)
+	ReadMsg(r IReader) (res IReadResult)
 }

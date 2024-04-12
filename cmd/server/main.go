@@ -2,97 +2,42 @@ package main
 
 import (
 	"fmt"
+	"github.com/winkb/tcp1/cmd/server/handles"
 	"github.com/winkb/tcp1/net/myws"
+	"html/template"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"github.com/winkb/tcp1/btmsg"
 	"github.com/winkb/tcp1/contracts"
-	"github.com/winkb/tcp1/util/numfn"
 )
 
-type RouteHandle func(conn *contracts.TcpConn, msg btmsg.IMsg)
-
-type RouteInfo struct {
-	Handle RouteHandle
-}
-
-var server contracts.ITcpServer
-
-type ShutdownReq struct {
-	Msg string
-}
-
-type ShutdownRsp struct {
-	Reason string
-}
-
-var routes = map[uint16]*RouteInfo{}
-
-func init() {
-	routes[0] = &RouteInfo{
-		Handle: func(conn *contracts.TcpConn, msg btmsg.IMsg) {
-			handleDefault(conn, msg, nil)
-		},
-	}
-
-	routes[100] = &RouteInfo{
-		Handle: func(conn *contracts.TcpConn, msg btmsg.IMsg) {
-			handleShutdown(conn, msg, parseReq(ShutdownReq{}, msg))
-		},
-	}
-}
-
-func parseReq[T any](v T, msg btmsg.IMsg) T {
-	_ = msg.FromStruct(&v)
-	return v
-}
-
-func logHandle(name string, t time.Time) func() {
-	return func() {
-		fmt.Println("handle", name, "in")
-		fmt.Println("handle", name, "out", numfn.ToStr(time.Now().Sub(t).Nanoseconds())+"ns")
-	}
-}
-
-func handleDefault(conn *contracts.TcpConn, msg btmsg.IMsg, req any) {
-	defer logHandle("default", time.Now())
-
-	fmt.Println("sever receive default msg ", req)
-}
-
-func handleShutdown(conn *contracts.TcpConn, msg btmsg.IMsg, req ShutdownReq) {
-	defer logHandle("shutdown", time.Now())
-
-	fmt.Println("sever will shutdown ", req.Msg)
-
-	err := msg.FromStruct(&ShutdownRsp{
-		Reason: "server will shutdown! trigger by " + conn.GetRemoteIp(),
-	})
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	server.Broadcast(msg)
-	time.AfterFunc(time.Second, func() {
-		server.Shutdown()
-	})
-}
 
 func main() {
-	// server = mytcp.NewTcpServer("989", btmsg.NewReader())
+	//var server = mytcp.NewTcpServer("989", btmsg.NewReader(func() btmsg.IHead {
+	//	return btmsg.NewMsgHeadTcp()
+	//}))
 
-	server = myws.NewWs("localhost:989", "ws", btmsg.NewReader())
+	var b = &http.ServeMux{}
+
+	b.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
+		err := homeTemplate.Execute(w, "ws://"+r.Host+"/ws")
+		if err != nil {
+			_ ,_= w.Write([]byte(err.Error()))
+		}
+	})
+
+	var server = myws.NewWs("localhost:9899", "ws", btmsg.NewReader(func() btmsg.IHead {
+		return 	btmsg.NewMsgHeadWs()
+	}), b)
 	wg, err := server.Start()
 	if err != nil {
 		panic(err)
 	}
 
-
-	server.OnClose(func(conn *contracts.TcpConn, isServer bool, isClient bool) {
+	server.OnClose(func(s contracts.ITcpServer,conn *contracts.TcpConn, isServer bool, isClient bool) {
 		if isClient {
 			fmt.Println("客户端断开连接")
 		}
@@ -102,18 +47,18 @@ func main() {
 		}
 	})
 
-	server.OnReceive(func(conn *contracts.TcpConn, msg btmsg.IMsg) {
+	server.OnReceive(func(s contracts.ITcpServer,conn *contracts.TcpConn, msg btmsg.IMsg) {
 		act := msg.GetAct()
-		hv, ok := routes[act]
+		hv, ok := handles.Routes[act]
 		if !ok {
 			fmt.Println("not found handle", act)
 
 			// 走默认路由
 			act = 0
-			hv = routes[act]
+			hv = handles.Routes[act]
 		}
 
-		hv.Handle(conn, msg)
+		hv.Handle(s,conn, msg)
 	})
 
 	chSingle := make(chan os.Signal)
@@ -139,3 +84,82 @@ func main() {
 }
 
 
+
+var homeTemplate  = template.Must(template.New("").Parse(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script>  
+window.addEventListener("load", function(evt) {
+
+    var output = document.getElementById("output");
+    var input = document.getElementById("input");
+    var ws;
+
+    var print = function(message) {
+        var d = document.createElement("div");
+        d.textContent = message;
+        output.appendChild(d);
+        output.scroll(0, output.scrollHeight);
+    };
+
+    document.getElementById("open").onclick = function(evt) {
+        if (ws) {
+            return false;
+        }
+        ws = new WebSocket("{{.}}");
+        ws.onopen = function(evt) {
+            print("OPEN");
+        }
+        ws.onclose = function(evt) {
+            print("CLOSE");
+            ws = null;
+        }
+        ws.onmessage = function(evt) {
+            print("RESPONSE: " + evt.data);
+        }
+        ws.onerror = function(evt) {
+            print("ERROR: " + evt.data);
+        }
+        return false;
+    };
+
+    document.getElementById("send").onclick = function(evt) {
+        if (!ws) {
+            return false;
+        }
+        print("SEND: " + input.value);
+		let msg  = {act:1, content:input.value}
+        ws.send(JSON.stringify(msg));
+        return false;
+    };
+
+    document.getElementById("close").onclick = function(evt) {
+        if (!ws) {
+            return false;
+        }
+        ws.close();
+        return false;
+    };
+
+});
+</script>
+</head>
+<body>
+<table>
+<tr><td valign="top" width="50%">
+<p>Click "Open" to create a connection to the server, 
+"Send" to send a message to the server and "Close" to close the connection. 
+You can change the message and send multiple times.
+<p>
+<form>
+<button id="open">Open</button>
+<button id="close">Close</button>
+<p><input id="input" type="text" value="Hello world!">
+<button type="button" id="send">Send</button>
+</form>
+</td><td valign="top" width="50%">
+<div id="output" style="max-height: 70vh;overflow-y: scroll;"></div>
+</td></tr></table>
+</body>
+</html>`))

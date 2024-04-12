@@ -57,7 +57,7 @@ func TestClientMul(t *testing.T) {
 
 	const N = 100
 
-	ts := mytcp.NewTcpServer("989", btmsg.NewReader())
+	ts := mytcp.NewTcpServer("989", btmsg.NewReader(btmsg.NewMsgHeadTcp()))
 
 	var num int32 = 0
 	var lock sync.RWMutex

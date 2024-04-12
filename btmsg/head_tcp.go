@@ -17,7 +17,7 @@ type MsgHeadTcp struct {
 
 var _ IHead = (*MsgHeadTcp)(nil)
 
-func NewMsgHead() *MsgHeadTcp {
+func NewMsgHeadTcp() *MsgHeadTcp {
 	return &MsgHeadTcp{}
 }
 
@@ -38,7 +38,7 @@ func (l *MsgHeadTcp) BodySize() uint32 {
 	return l.Size
 }
 
-func (l *MsgHeadTcp) Read(r io.Reader) (err error) {
+func (l *MsgHeadTcp) Read(r IReader) (err error) {
 	var headSize = l.HeadSize()
 	var n int
 	var hdBt = make([]byte, headSize)
@@ -63,7 +63,7 @@ func (l *MsgHeadTcp) Read(r io.Reader) (err error) {
 	return nil
 }
 
-func (l *MsgHeadTcp) ReadBody(r io.Reader) (err error, bt []byte) {
+func (l *MsgHeadTcp) ReadBody(r IReader) (err error, bt []byte) {
 	var bodySize = l.BodySize()
 	var n int
 

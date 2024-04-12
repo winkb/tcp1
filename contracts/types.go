@@ -7,8 +7,8 @@ import (
 	"github.com/winkb/tcp1/btmsg"
 )
 
-type ServerCloseCallback func(conn *TcpConn, isServer bool, isClient bool)
-type ServerReceiveCallback func(conn *TcpConn, msg btmsg.IMsg)
+type ServerCloseCallback func(s ITcpServer,conn *TcpConn, isServer bool, isClient bool)
+type ServerReceiveCallback func(s ITcpServer,conn *TcpConn, msg btmsg.IMsg)
 
 type ITcpServer interface {
 	Shutdown()
@@ -17,8 +17,6 @@ type ITcpServer interface {
 	OnReceive(f ServerReceiveCallback)
 	OnClose(f ServerCloseCallback)
 	Start() (wg *sync.WaitGroup, err error)
-	ConsumeInput(conn *TcpConn)
-	ConsumeOutput(conn *TcpConn)
 	Broadcast(bt btmsg.IMsg)
 }
 

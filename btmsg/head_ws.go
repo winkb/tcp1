@@ -3,12 +3,12 @@ package btmsg
 import (
 	"encoding/json"
 	"github.com/pkg/errors"
-	"io"
 )
 
 type MsgHeadWs struct {
 	Act  uint16
 	Size uint32
+	body []byte
 }
 
 var _ IHead = (*MsgHeadWs)(nil)
@@ -29,11 +29,10 @@ func (l *MsgHeadWs) BodySize() uint32 {
 	return l.Size
 }
 
-func (l *MsgHeadWs) Read(r io.Reader) (err error) {
-	var hdMap= map[string]uint16{
+func (l *MsgHeadWs) Read(r IReader) (err error) {
+	var hdMap= map[string]any{
 		"act":0,
 	}
-	var all []byte
 
 	defer func() {
 		if err != nil {
@@ -41,31 +40,31 @@ func (l *MsgHeadWs) Read(r io.Reader) (err error) {
 		}
 	}()
 
-	all, err = io.ReadAll(r)
+	_, l.body, err = r.ReadMessage()
 	if err != nil {
 		err = errors.Wrap(err, "readAll")
 		return
 	}
 
-	err = json.Unmarshal(all, &hdMap)
+	err = json.Unmarshal(l.body, &hdMap)
 	if err != nil {
 		err = errors.Wrap(err, "json unmarshall")
 		return
 	}
 
-	l.Act = hdMap["act"]
-
-	return nil
-}
-
-func (l *MsgHeadWs) ReadBody(r io.Reader) (err error, bt []byte) {
-	bt, err = io.ReadAll(r)
-	if err != nil {
-		err = errors.Wrap(err, "msgHeadWs.ReadBody readAll")
+	i,ok := hdMap["act"].(float64);
+	if !ok{
+		err = errors.Errorf("act must float64:%v",hdMap["act"])
 		return
 	}
 
-	return
+	l.Act = uint16(i)
+	return nil
+}
+
+// todo 这里head 和 body不能都read,所以先把body存起来，后面优化一下，防止误用
+func (l *MsgHeadWs) ReadBody(r IReader) (err error, bt []byte) {
+	return nil, l.body
 }
 
 func (l *MsgHeadWs) ToBytes() []byte {

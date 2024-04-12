@@ -1,6 +1,7 @@
 package myws
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"sync"
@@ -16,43 +17,19 @@ import (
 	"github.com/winkb/tcp1/util"
 )
 
-type wrapConn struct {
-	*websocket.Conn
-}
-
-func (l *wrapConn) Read(b []byte) (n int, err error) {
-	panic("implement me")
-}
-
-func (l *wrapConn) SetDeadline(t time.Time) error {
-	if err := l.Conn.SetReadDeadline(t); err != nil {
-		return err
-	}
-	return l.Conn.SetWriteDeadline(t)
-}
-
-func (l *wrapConn) GetRemoteIp() string {
-	return l.Conn.RemoteAddr().String()
-}
-
-// Write writes data to the connection.
-// Write can be made to time out and return an error after a fixed
-// time limit; see SetDeadline and SetWriteDeadline.
-func (l *wrapConn) Write(b []byte) (n int, err error) {
-	return
-}
 
 var upgrader = websocket.Upgrader{} // use default options
 
 var _ ITcpServer = (*Ws)(nil)
 
-func NewWs(addr string, wsPath string, r btmsg.IMsgReader) *Ws {
+func NewWs(addr string, wsPath string, r btmsg.IMsgReader, b *http.ServeMux) *Ws {
 	return &Ws{
+		serverMux: b,
 		wsPath:          wsPath,
 		addr:            addr,
 		reader:          r,
-		closeCallback:   func(conn *TcpConn, isServer, isClient bool) {},
-		receiveCallback: func(conn *TcpConn, msg btmsg.IMsg) {},
+		closeCallback:   func(s ITcpServer,conn *TcpConn, isServer, isClient bool) {},
+		receiveCallback: func(s ITcpServer,conn *TcpConn, msg btmsg.IMsg) {},
 		conns:           sync.Map{},
 		lastId:          0,
 		stop:            0,
@@ -63,7 +40,8 @@ func NewWs(addr string, wsPath string, r btmsg.IMsgReader) *Ws {
 
 type Ws struct {
 	wsPath          string
-	listener        *websocket.Conn
+	serverMux *http.ServeMux
+	listener        *http.Server
 	closeCallback   ServerCloseCallback
 	receiveCallback ServerReceiveCallback
 	addr            string
@@ -93,7 +71,9 @@ func (l *Ws) Shutdown() {
 		return true
 	})
 
-	err := l.listener.Close()
+	var ctx = context.Background()
+
+	err := l.listener.Shutdown(ctx)
 	if err != nil {
 		fmt.Println(err)
 	}
@@ -113,7 +93,7 @@ func (l *Ws) Send(conn *TcpConn, v btmsg.IMsg) {
 	}
 	conn.Lock.RUnlock()
 
-	conn.Input <- v
+	conn.Output <- v
 }
 
 func (l *Ws) getConnById(id uint32) (conn *TcpConn, ok bool) {
@@ -167,8 +147,12 @@ func (l *Ws) Start() (wg *sync.WaitGroup, err error) {
 	if err != nil {
 		return
 	}
+
+	wg.Add(1)
 	// read
-	util.MyGoWg(wg, "conn_accept", func() {
+	go func() {
+		defer  wg.Done()
+
 		l.LoopAccept(func(conn *websocket.Conn) {
 			// 注意 这里不能阻塞 lock,因为accept，有lock判断
 
@@ -188,18 +172,18 @@ func (l *Ws) Start() (wg *sync.WaitGroup, err error) {
 			})
 
 			util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_input", newId), func() {
-				l.ConsumeInput(myConn)
+				l.ConsumeInput(myConn, conn)
 			})
 
 			util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_output", newId), func() {
-				l.ConsumeOutput(myConn)
+				l.ConsumeOutput(myConn, conn)
 			})
 
 			fmt.Println(conn.RemoteAddr().String() + "conn success")
 
 			l.saveConn(newId, myConn)
 		})
-	})
+	}()
 
 	fmt.Println("start server " + l.addr)
 
@@ -211,28 +195,49 @@ func (l *Ws) saveConn(id uint32, conn *TcpConn) {
 }
 
 func (l *Ws) LoopAccept(f func(conn *websocket.Conn)) {
-	http.HandleFunc("/"+l.wsPath, func(w http.ResponseWriter, r *http.Request) {
+	var b = l.serverMux
+
+	b.HandleFunc("/"+l.wsPath, func(w http.ResponseWriter, r *http.Request) {
 		conn, err := upgrader.Upgrade(w, r, nil)
 		if err != nil {
 			log.Print("upgrade:", err)
 			return
 		}
-
 		f(conn)
 	})
 
-	err := http.ListenAndServe(l.addr, nil)
+	var s = http.Server{
+		Addr:                         l.addr,
+		Handler:                      b,
+		DisableGeneralOptionsHandler: false,
+		TLSConfig:                    nil,
+		ReadTimeout:                  0,
+		ReadHeaderTimeout:            0,
+		WriteTimeout:                 0,
+		IdleTimeout:                  0,
+		MaxHeaderBytes:               0,
+		TLSNextProto:                 nil,
+		ConnState:                    nil,
+		ErrorLog:                     nil,
+		BaseContext:                  nil,
+		ConnContext:                  nil,
+	}
+
+	l.listener = &s
+
+	err := s.ListenAndServe()
 	if err != nil {
+		err = errors.Wrap(err, "ws listen and server")
 		panic(err)
 	}
 }
 
-func (l *Ws) ConsumeInput(conn *TcpConn) {
+func (l *Ws) ConsumeInput(conn *TcpConn,  wsConn *websocket.Conn) {
 	for {
 		select {
 		case <-conn.WaitConn:
 			return
-		case msg := <-conn.Output:
+		case msg := <-conn.Input:
 			l.handelReceive(conn, msg)
 		}
 	}
@@ -240,22 +245,23 @@ func (l *Ws) ConsumeInput(conn *TcpConn) {
 
 func (l *Ws) handelReceive(conn *TcpConn, bt btmsg.IMsg) {
 	if l.receiveCallback != nil {
-		l.receiveCallback(conn, bt)
+		l.receiveCallback(l, conn, bt)
 	}
 }
 
-func (l *Ws) ConsumeOutput(conn *TcpConn) {
+func (l *Ws) ConsumeOutput(conn *TcpConn,  wsConn *websocket.Conn) {
 	for {
 		select {
 		case <-conn.WaitConn:
 			return
 		case msg := <-conn.Output:
-			l.handelReceive(conn, msg)
+			l.writeSend(conn, msg, wsConn)
 		}
 	}
 }
 
 func (l *Ws) LoopRead(conn *TcpConn) {
+
 	defer func() {
 		select {
 		case <-conn.WaitConn:
@@ -293,7 +299,7 @@ func (l *Ws) LoopRead(conn *TcpConn) {
 				return
 			}
 
-			conn.Output <- res.GetMsg()
+			conn.Input<- res.GetMsg()
 		}
 	}
 }
@@ -316,6 +322,35 @@ func (l *Ws) removeConn(id uint32) {
 func (l *Ws) handelReadClose(conn *TcpConn, isServer bool, isClient bool) {
 	close(conn.WaitConn)
 	if l.closeCallback != nil {
-		l.closeCallback(conn, isServer, isClient)
+		l.closeCallback(l,conn, isServer, isClient)
 	}
+}
+
+func (l *Ws) writeSend(conn *TcpConn, msg btmsg.IMsg,wsConn *websocket.Conn ) {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+
+	if l.stop != 0 {
+		return
+	}
+
+	_ = conn.Conn.SetWriteDeadline(time.Now().Add(l.timeout))
+	id := conn.Id
+
+	var err error
+	conn.Lock.RLock()
+	defer conn.Lock.RUnlock()
+	if conn.IsClose {
+		log.Print("conn is closed, drop msg")
+		return
+	}
+
+	// todo 不能写死
+	err = wsConn.WriteMessage(1, msg.ToSendByte())
+	if err != nil {
+		log.Err(errors.Wrapf(err, "conn %d write err", id))
+		return
+	}
+
+	log.Print("input id", id, "msg", msg.GetAct(), string(msg.BodyByte()))
 }

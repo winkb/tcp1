@@ -83,8 +83,10 @@ func (l *tcpClient) OnClose(f clientCloseCallback) {
 func (l *tcpClient) LoopRead() {
 
 	for {
-		r := btmsg.NewReader()
-		res := r.ReadMsg(l.conn)
+		r := btmsg.NewReader(func() btmsg.IHead {
+			return btmsg.NewMsgHeadTcp()
+		})
+		res := r.ReadMsg(NewWrapConn(l.conn))
 		if err := res.GetErr(); err != nil {
 			if res.IsCloseByServer() {
 				l.handelReadClose(true, false)

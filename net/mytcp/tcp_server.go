@@ -14,18 +14,6 @@ import (
 	. "github.com/winkb/tcp1/util"
 )
 
-type wrapConn struct {
-	net.Conn
-}
-
-func (l *wrapConn) ReadMessage() (messageType int, p []byte, err error) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func (l *wrapConn) GetRemoteIp() string {
-	return l.Conn.RemoteAddr().String()
-}
 
 type tcpServer struct {
 	listener        net.Listener
@@ -43,9 +31,9 @@ type tcpServer struct {
 func NewTcpServer(port string, r btmsg.IMsgReader) *tcpServer {
 	return &tcpServer{
 		listener: nil,
-		closeCallback: func(conn *TcpConn, isServer bool, isClient bool) {
+		closeCallback: func(s ITcpServer,conn *TcpConn, isServer bool, isClient bool) {
 		},
-		receiveCallback: func(conn *TcpConn, msg btmsg.IMsg) {
+		receiveCallback: func(s ITcpServer,conn *TcpConn, msg btmsg.IMsg) {
 		},
 		addr:    ":" + port,
 		conns:   sync.Map{},
@@ -208,13 +196,13 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 func (l *tcpServer) handelReadClose(conn *TcpConn, isServer bool, isClient bool) {
 	close(conn.WaitConn)
 	if l.closeCallback != nil {
-		l.closeCallback(conn, isServer, isClient)
+		l.closeCallback(l,conn, isServer, isClient)
 	}
 }
 
 func (l *tcpServer) handelReceive(conn *TcpConn, bt btmsg.IMsg) {
 	if l.receiveCallback != nil {
-		l.receiveCallback(conn, bt)
+		l.receiveCallback(l, conn, bt)
 	}
 }
 

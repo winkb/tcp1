@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/winkb/tcp1/btmsg"
 	"github.com/winkb/tcp1/net/mytcp"
+	"github.com/winkb/tcp1/util"
 	"os"
 )
 
@@ -23,7 +24,7 @@ type ShutdownRsp struct {
 }
 
 func newMsg(act uint16, req any) btmsg.IMsg {
-	hd := btmsg.NewMsgHead()
+	hd := btmsg.NewMsgHeadTcp()
 	hd.Act = act
 	res := btmsg.NewMsg(hd, nil)
 	err := res.FromStruct(req)
@@ -86,7 +87,7 @@ func main() {
 	scan := bufio.NewScanner(os.Stdin)
 	const exitLimit = "exit;"
 
-	mytcp.MyGoWg(wg, "scan_input", func() {
+	util.MyGoWg(wg, "scan_input", func() {
 		defer func() {
 			cli.Close()
 		}()
