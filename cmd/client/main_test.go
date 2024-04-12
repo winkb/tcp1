@@ -3,7 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/winkb/tcp1/btmsg"
-	"github.com/winkb/tcp1/mytcp"
+	"github.com/winkb/tcp1/net/mytcp"
 	"sync"
 	"testing"
 	"time"

@@ -9,7 +9,7 @@ import (
 )
 
 func TestBtToHead(t *testing.T) {
-	var h = &MsgHead{}
+	var h = &MsgHeadTcp{}
 	var bt = make([]byte, h.HeadSize())
 
 	t.Log(unsafe.Sizeof(h.Act))
@@ -29,7 +29,7 @@ func TestBtToHead(t *testing.T) {
 }
 
 func TestHeadBytes2(t *testing.T) {
-	var h = &MsgHead{}
+	var h = &MsgHeadTcp{}
 
 	h.Act = 100
 	h.Size = 12
@@ -39,7 +39,7 @@ func TestHeadBytes2(t *testing.T) {
 }
 
 func TestWriteHead(t *testing.T) {
-	var h = &MsgHead{
+	var h = &MsgHeadTcp{
 		Act:  100,
 		Size: 12,
 	}

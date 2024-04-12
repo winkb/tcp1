@@ -1,4 +1,4 @@
-package mytcp
+package util
 
 import (
 	"fmt"

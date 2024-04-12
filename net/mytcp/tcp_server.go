@@ -10,26 +10,22 @@ import (
 	"github.com/pkg/errors"
 	"github.com/rs/zerolog/log"
 	"github.com/winkb/tcp1/btmsg"
+	. "github.com/winkb/tcp1/contracts"
+	. "github.com/winkb/tcp1/util"
 )
 
-type ServerCloseCallback func(conn *TcpConn, isServer bool, isClient bool)
-type ServerReceiveCallback func(conn *TcpConn, msg btmsg.IMsg)
-
-type ITcpServer interface {
-	Shutdown()
-	Send(conn *TcpConn, v btmsg.IMsg)
-	SendById(id uint32, v btmsg.IMsg)
-	OnReceive(f ServerReceiveCallback)
-	OnClose(f ServerCloseCallback)
-	Start() (wg *sync.WaitGroup, err error)
-	LoopAccept(f func(conn net.Conn))
-	ConsumeInput(conn *TcpConn)
-	ConsumeOutput(conn *TcpConn)
-	LoopRead(conn *TcpConn)
-	Broadcast(bt btmsg.IMsg)
+type wrapConn struct {
+	net.Conn
 }
 
-var _ ITcpServer = (*tcpServer)(nil)
+func (l *wrapConn) ReadMessage() (messageType int, p []byte, err error) {
+	//TODO implement me
+	panic("implement me")
+}
+
+func (l *wrapConn) GetRemoteIp() string {
+	return l.Conn.RemoteAddr().String()
+}
 
 type tcpServer struct {
 	listener        net.Listener
@@ -42,27 +38,6 @@ type tcpServer struct {
 	lock            sync.RWMutex
 	reader          btmsg.IMsgReader
 	timeout         time.Duration
-}
-
-type TcpConn struct {
-	conn     net.Conn
-	id       uint32
-	input    chan btmsg.IMsg
-	output   chan btmsg.IMsg
-	waitConn chan bool
-	lock     sync.RWMutex
-	isClose  bool
-}
-
-func (l *TcpConn) GetRemoteIp() string {
-	if l.conn == nil {
-		return ""
-	}
-	return l.conn.RemoteAddr().String()
-}
-
-func (l *TcpConn) GetId() uint32 {
-	return l.id
 }
 
 func NewTcpServer(port string, r btmsg.IMsgReader) *tcpServer {
@@ -140,9 +115,9 @@ func (l *tcpServer) removeConn(id uint32) {
 func (l *tcpServer) ConsumeOutput(conn *TcpConn) {
 	for {
 		select {
-		case <-conn.waitConn:
+		case <-conn.WaitConn:
 			return
-		case msg := <-conn.output:
+		case msg := <-conn.Output:
 			l.handelReceive(conn, msg)
 		}
 	}
@@ -156,18 +131,18 @@ func (l *tcpServer) writeSend(conn *TcpConn, msg btmsg.IMsg) {
 		return
 	}
 
-	_ = conn.conn.SetWriteDeadline(time.Now().Add(l.timeout))
-	id := conn.id
+	_ = conn.Conn.SetWriteDeadline(time.Now().Add(l.timeout))
+	id := conn.Id
 
 	var err error
-	conn.lock.RLock()
-	defer conn.lock.RUnlock()
-	if conn.isClose {
+	conn.Lock.RLock()
+	defer conn.Lock.RUnlock()
+	if conn.IsClose {
 		log.Print("conn is closed, drop msg")
 		return
 	}
 
-	_, err = conn.conn.Write(msg.ToSendByte())
+	_, err = conn.Conn.Write(msg.ToSendByte())
 	if err != nil {
 		log.Err(errors.Wrapf(err, "conn %d write err", id))
 		return
@@ -179,9 +154,9 @@ func (l *tcpServer) writeSend(conn *TcpConn, msg btmsg.IMsg) {
 func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 	for {
 		select {
-		case <-conn.waitConn:
+		case <-conn.WaitConn:
 			return
-		case msg := <-conn.input:
+		case msg := <-conn.Input:
 			l.writeSend(conn, msg)
 		}
 	}
@@ -190,24 +165,24 @@ func (l *tcpServer) ConsumeInput(conn *TcpConn) {
 func (l *tcpServer) LoopRead(conn *TcpConn) {
 	defer func() {
 		select {
-		case <-conn.waitConn:
+		case <-conn.WaitConn:
 		default:
-			close(conn.waitConn)
+			close(conn.WaitConn)
 		}
 	}()
 	for {
 		select {
-		case <-conn.waitConn:
+		case <-conn.WaitConn:
 			return
 		default:
-			res := l.reader.ReadMsg(conn.conn)
+			res := l.reader.ReadMsg(conn.Conn)
 			err := res.GetErr()
-			conn.lock.Lock()
+			conn.Lock.Lock()
 			if err != nil {
-				conn.isClose = true
-				l.removeConn(conn.id)
+				conn.IsClose = true
+				l.removeConn(conn.Id)
 			}
-			conn.lock.Unlock()
+			conn.Lock.Unlock()
 
 			if err != nil {
 
@@ -225,13 +200,13 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 				return
 			}
 
-			conn.output <- res.GetMsg()
+			conn.Output <- res.GetMsg()
 		}
 	}
 }
 
 func (l *tcpServer) handelReadClose(conn *TcpConn, isServer bool, isClient bool) {
-	close(conn.waitConn)
+	close(conn.WaitConn)
 	if l.closeCallback != nil {
 		l.closeCallback(conn, isServer, isClient)
 	}
@@ -256,7 +231,7 @@ func (l *tcpServer) Shutdown() {
 	l.conns.Range(func(key, value any) bool {
 		v, ok := value.(*TcpConn)
 		if ok {
-			_ = v.conn.Close()
+			_ = v.Conn.Close()
 		}
 		return true
 	})
@@ -275,14 +250,14 @@ func (l *tcpServer) Send(conn *TcpConn, v btmsg.IMsg) {
 	}
 	l.lock.RUnlock()
 
-	conn.lock.RLock()
-	if conn.isClose {
-		conn.lock.RUnlock()
+	conn.Lock.RLock()
+	if conn.IsClose {
+		conn.Lock.RUnlock()
 		return
 	}
-	conn.lock.RUnlock()
+	conn.Lock.RUnlock()
 
-	conn.input <- v
+	conn.Input <- v
 }
 
 func (l *tcpServer) SendById(id uint32, v btmsg.IMsg) {
@@ -317,11 +292,13 @@ func (l *tcpServer) Start() (wg *sync.WaitGroup, err error) {
 
 			newId := l.getConnAutoIncId()
 			myConn := &TcpConn{
-				conn:     conn,
-				id:       newId,
-				input:    make(chan btmsg.IMsg),
-				output:   make(chan btmsg.IMsg),
-				waitConn: make(chan bool),
+				Conn: &wrapConn{
+					Conn: conn,
+				},
+				Id:       newId,
+				Input:    make(chan btmsg.IMsg),
+				Output:   make(chan btmsg.IMsg),
+				WaitConn: make(chan bool),
 			}
 
 			MyGoWg(wg, fmt.Sprintf("%d_conn_read", newId), func() {

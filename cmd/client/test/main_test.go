@@ -2,12 +2,14 @@ package main
 
 import (
 	"fmt"
+	"github.com/winkb/tcp1/contracts"
+	"github.com/winkb/tcp1/util"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/winkb/tcp1/btmsg"
-	"github.com/winkb/tcp1/mytcp"
+	"github.com/winkb/tcp1/net/mytcp"
 )
 
 func startClient() {
@@ -41,7 +43,7 @@ func startClient() {
 
 	const exitLimit = "exit;"
 
-	mytcp.MyGoWg(wg, "scan_input", func() {
+	util.MyGoWg(wg, "scan_input", func() {
 		defer func() {
 			cli.Close()
 		}()
@@ -67,7 +69,7 @@ func TestClientMul(t *testing.T) {
 			panic(err2)
 		}
 
-		ts.OnClose(func(conn *mytcp.TcpConn, isServer, isClient bool) {
+		ts.OnClose(func(conn *contracts.TcpConn, isServer bool, isClient bool) {
 			if isClient {
 				lock.Lock()
 				num++

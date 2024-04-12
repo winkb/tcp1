@@ -8,14 +8,26 @@ import (
 var _ IMsg = (*Msg)(nil)
 
 type Msg struct {
-	*MsgHead
+	head IHead
 	bodyBt []byte
 }
 
-func NewMsg(head *MsgHead, bodyBt []byte) *Msg {
+func (l *Msg) BodySize() uint32 {
+	return l.head.BodySize()
+}
+
+func (l *Msg) HeadSize() uint32 {
+	return l.head.HeadSize()
+}
+
+func (l *Msg) GetAct() uint16 {
+	return l.head.GetAct()
+}
+
+func NewMsg(head IHead, bodyBt []byte) *Msg {
 	return &Msg{
-		MsgHead: head,
-		bodyBt:  bodyBt,
+		head: head,
+		bodyBt:     bodyBt,
 	}
 }
 
@@ -49,9 +61,9 @@ func (l *Msg) ToStruct(v any) (any, error) {
 
 // 除非只需要发送head,否则需要在FromStruct之后执行
 func (l *Msg) ToSendByte() []byte {
-	l.MsgHead.Size = uint32(len(l.bodyBt))
+	l.head.SetSize(uint32(len(l.bodyBt)))
 
-	bt := l.MsgHead.ToBytes()
+	bt := l.head.ToBytes()
 	bt = append(bt, l.bodyBt...)
 
 	return bt

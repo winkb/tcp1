@@ -7,11 +7,11 @@ import (
 
 type ReaderResult struct {
 	err  error
-	head *MsgHead
+	head *MsgHeadTcp
 	body []byte
 }
 
-func NewReaderResult(err error, head *MsgHead, body []byte) *ReaderResult {
+func NewReaderResult(err error, head *MsgHeadTcp, body []byte) *ReaderResult {
 	return &ReaderResult{
 		err:  err,
 		head: head,

@@ -9,32 +9,36 @@ import (
 	"unsafe"
 )
 
-// MsgHead 作为容器，不可以有多余字段
-type MsgHead struct {
+// MsgHeadTcp 作为容器，不可以有多余字段
+type MsgHeadTcp struct {
 	Act  uint16
 	Size uint32
 }
 
-var _ IHead = (*MsgHead)(nil)
+var _ IHead = (*MsgHeadTcp)(nil)
 
-func NewMsgHead() *MsgHead {
-	return &MsgHead{}
+func NewMsgHead() *MsgHeadTcp {
+	return &MsgHeadTcp{}
 }
 
-func (l *MsgHead) GetAct() uint16 {
+func (l *MsgHeadTcp) SetSize(size uint32) {
+	l.Size = size
+}
+
+func (l *MsgHeadTcp) GetAct() uint16 {
 	return l.Act
 }
 
 // 如果MsgHead增加了字段，这里也要对应修改
-func (l *MsgHead) HeadSize() uint32 {
+func (l *MsgHeadTcp) HeadSize() uint32 {
 	return uint32(unsafe.Sizeof(l.Act) + unsafe.Sizeof(l.Size))
 }
 
-func (l *MsgHead) BodySize() uint32 {
+func (l *MsgHeadTcp) BodySize() uint32 {
 	return l.Size
 }
 
-func (l *MsgHead) Read(r io.Reader) (err error) {
+func (l *MsgHeadTcp) Read(r io.Reader) (err error) {
 	var headSize = l.HeadSize()
 	var n int
 	var hdBt = make([]byte, headSize)
@@ -59,7 +63,7 @@ func (l *MsgHead) Read(r io.Reader) (err error) {
 	return nil
 }
 
-func (l *MsgHead) ReadBody(r io.Reader) (err error, bt []byte) {
+func (l *MsgHeadTcp) ReadBody(r io.Reader) (err error, bt []byte) {
 	var bodySize = l.BodySize()
 	var n int
 
@@ -77,7 +81,7 @@ func (l *MsgHead) ReadBody(r io.Reader) (err error, bt []byte) {
 	return
 }
 
-func (l *MsgHead) ToBytes() []byte {
+func (l *MsgHeadTcp) ToBytes() []byte {
 	bt := make([]byte, 0)
 	bf := bytes.NewBuffer(bt)
 	_ = binary.Write(bf, binary.LittleEndian, l)

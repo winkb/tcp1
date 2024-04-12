@@ -2,24 +2,24 @@ package main
 
 import (
 	"fmt"
-	"net/http"
+	"github.com/winkb/tcp1/net/myws"
 	"os"
 	"os/signal"
 	"syscall"
 	"time"
 
 	"github.com/winkb/tcp1/btmsg"
-	"github.com/winkb/tcp1/mytcp"
+	"github.com/winkb/tcp1/contracts"
 	"github.com/winkb/tcp1/util/numfn"
 )
 
-type RouteHandle func(conn *mytcp.TcpConn, msg btmsg.IMsg)
+type RouteHandle func(conn *contracts.TcpConn, msg btmsg.IMsg)
 
 type RouteInfo struct {
 	Handle RouteHandle
 }
 
-var server mytcp.ITcpServer
+var server contracts.ITcpServer
 
 type ShutdownReq struct {
 	Msg string
@@ -33,13 +33,13 @@ var routes = map[uint16]*RouteInfo{}
 
 func init() {
 	routes[0] = &RouteInfo{
-		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg) {
+		Handle: func(conn *contracts.TcpConn, msg btmsg.IMsg) {
 			handleDefault(conn, msg, nil)
 		},
 	}
 
 	routes[100] = &RouteInfo{
-		Handle: func(conn *mytcp.TcpConn, msg btmsg.IMsg) {
+		Handle: func(conn *contracts.TcpConn, msg btmsg.IMsg) {
 			handleShutdown(conn, msg, parseReq(ShutdownReq{}, msg))
 		},
 	}
@@ -57,13 +57,13 @@ func logHandle(name string, t time.Time) func() {
 	}
 }
 
-func handleDefault(conn *mytcp.TcpConn, msg btmsg.IMsg, req any) {
+func handleDefault(conn *contracts.TcpConn, msg btmsg.IMsg, req any) {
 	defer logHandle("default", time.Now())
 
 	fmt.Println("sever receive default msg ", req)
 }
 
-func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req ShutdownReq) {
+func handleShutdown(conn *contracts.TcpConn, msg btmsg.IMsg, req ShutdownReq) {
 	defer logHandle("shutdown", time.Now())
 
 	fmt.Println("sever will shutdown ", req.Msg)
@@ -83,15 +83,16 @@ func handleShutdown(conn *mytcp.TcpConn, msg btmsg.IMsg, req ShutdownReq) {
 }
 
 func main() {
-	server = mytcp.NewTcpServer("989", btmsg.NewReader())
+	// server = mytcp.NewTcpServer("989", btmsg.NewReader())
+
+	server = myws.NewWs("localhost:989", "ws", btmsg.NewReader())
 	wg, err := server.Start()
 	if err != nil {
 		panic(err)
 	}
 
-	go startHttp()
 
-	server.OnClose(func(conn *mytcp.TcpConn, isServer bool, isClient bool) {
+	server.OnClose(func(conn *contracts.TcpConn, isServer bool, isClient bool) {
 		if isClient {
 			fmt.Println("客户端断开连接")
 		}
@@ -101,7 +102,7 @@ func main() {
 		}
 	})
 
-	server.OnReceive(func(conn *mytcp.TcpConn, msg btmsg.IMsg) {
+	server.OnReceive(func(conn *contracts.TcpConn, msg btmsg.IMsg) {
 		act := msg.GetAct()
 		hv, ok := routes[act]
 		if !ok {
@@ -137,12 +138,4 @@ func main() {
 	close(chSingle)
 }
 
-func startHttp() {
 
-	http.HandleFunc("/get", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Println("http get")
-	})
-
-	http.ListenAndServe(":81", nil)
-
-}

@@ -3,8 +3,10 @@ package mytcp
 import (
 	"fmt"
 	"github.com/winkb/tcp1/btmsg"
+	"github.com/winkb/tcp1/util"
 	"net"
 	"sync"
+
 )
 
 type clientReceiveCallback func(msg btmsg.IMsg)
@@ -43,11 +45,11 @@ func (l *tcpClient) Start() (wg *sync.WaitGroup, err error) {
 		return
 	}
 	// read
-	MyGoWg(wg, "conn_read", l.LoopRead)
+	util.MyGoWg(wg, "conn_read", l.LoopRead)
 	// write
-	MyGoWg(wg, "conn_write", l.LoopWrite)
+	util.MyGoWg(wg, "conn_write", l.LoopWrite)
 	// on msg
-	MyGoWg(wg, "conn_receive", l.LoopReceive)
+	util.MyGoWg(wg, "conn_receive", l.LoopReceive)
 
 	return
 }
