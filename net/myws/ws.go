@@ -17,19 +17,17 @@ import (
 	"github.com/winkb/tcp1/util"
 )
 
-
 var upgrader = websocket.Upgrader{} // use default options
 
 var _ ITcpServer = (*Ws)(nil)
 
-func NewWs(addr string, wsPath string, r btmsg.IMsgReader, b *http.ServeMux) *Ws {
+func NewWs(addr string, wsPath string, r btmsg.IMsgReader) *Ws {
 	return &Ws{
-		serverMux: b,
 		wsPath:          wsPath,
 		addr:            addr,
 		reader:          r,
-		closeCallback:   func(s ITcpServer,conn *TcpConn, isServer, isClient bool) {},
-		receiveCallback: func(s ITcpServer,conn *TcpConn, msg btmsg.IMsg) {},
+		closeCallback:   func(s ITcpServer, conn *TcpConn, isServer, isClient bool) {},
+		receiveCallback: func(s ITcpServer, conn *TcpConn, msg btmsg.IMsg) {},
 		conns:           sync.Map{},
 		lastId:          0,
 		stop:            0,
@@ -39,8 +37,8 @@ func NewWs(addr string, wsPath string, r btmsg.IMsgReader, b *http.ServeMux) *Ws
 }
 
 type Ws struct {
+	wg              *sync.WaitGroup
 	wsPath          string
-	serverMux *http.ServeMux
 	listener        *http.Server
 	closeCallback   ServerCloseCallback
 	receiveCallback ServerReceiveCallback
@@ -148,44 +146,46 @@ func (l *Ws) Start() (wg *sync.WaitGroup, err error) {
 		return
 	}
 
-	wg.Add(1)
+	l.wg = wg
+
+	// wg.Add(1)
 	// read
-	go func() {
-		defer  wg.Done()
+	// go func() {
+	// 	defer wg.Done()
 
-		l.LoopAccept(func(conn *websocket.Conn) {
-			// 注意 这里不能阻塞 lock,因为accept，有lock判断
+	// 	l.LoopAccept(func(conn *websocket.Conn) {
+	// 		// 注意 这里不能阻塞 lock,因为accept，有lock判断
 
-			newId := l.getConnAutoIncId()
-			myConn := &TcpConn{
-				Conn: &wrapConn{
-					Conn:conn,
-				},
-				Id:       newId,
-				Input:    make(chan btmsg.IMsg),
-				Output:   make(chan btmsg.IMsg),
-				WaitConn: make(chan bool),
-			}
+	// 		newId := l.getConnAutoIncId()
+	// 		myConn := &TcpConn{
+	// 			Conn: &wrapConn{
+	// 				Conn: conn,
+	// 			},
+	// 			Id:       newId,
+	// 			Input:    make(chan btmsg.IMsg),
+	// 			Output:   make(chan btmsg.IMsg),
+	// 			WaitConn: make(chan bool),
+	// 		}
 
-			util.MyGoWg(wg, fmt.Sprintf("%d_conn_read", newId), func() {
-				l.LoopRead(myConn)
-			})
+	// 		util.MyGoWg(wg, fmt.Sprintf("%d_conn_read", newId), func() {
+	// 			l.LoopRead(myConn)
+	// 		})
 
-			util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_input", newId), func() {
-				l.ConsumeInput(myConn, conn)
-			})
+	// 		util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_input", newId), func() {
+	// 			l.ConsumeInput(myConn, conn)
+	// 		})
 
-			util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_output", newId), func() {
-				l.ConsumeOutput(myConn, conn)
-			})
+	// 		util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_output", newId), func() {
+	// 			l.ConsumeOutput(myConn, conn)
+	// 		})
 
-			fmt.Println(conn.RemoteAddr().String() + "conn success")
+	// 		fmt.Println(conn.RemoteAddr().String() + "conn success")
 
-			l.saveConn(newId, myConn)
-		})
-	}()
+	// 		l.saveConn(newId, myConn)
+	// 	})
+	// }()
 
-	fmt.Println("start server " + l.addr)
+	// fmt.Println("start server " + l.addr)
 
 	return
 }
@@ -194,45 +194,45 @@ func (l *Ws) saveConn(id uint32, conn *TcpConn) {
 	l.conns.Store(id, conn)
 }
 
-func (l *Ws) LoopAccept(f func(conn *websocket.Conn)) {
-	var b = l.serverMux
+func (l *Ws) LoopAccept(w http.ResponseWriter, r *http.Request) {
+	var wg = l.wg
 
-	b.HandleFunc("/"+l.wsPath, func(w http.ResponseWriter, r *http.Request) {
-		conn, err := upgrader.Upgrade(w, r, nil)
-		if err != nil {
-			log.Print("upgrade:", err)
-			return
-		}
-		f(conn)
+	conn, err := upgrader.Upgrade(w, r, nil)
+	if err != nil {
+		log.Print("upgrade:", err)
+		return
+	}
+
+	// 注意 这里不能阻塞 lock,因为accept，有lock判断
+	newId := l.getConnAutoIncId()
+	myConn := &TcpConn{
+		Conn: &wrapConn{
+			Conn: conn,
+		},
+		Id:       newId,
+		Input:    make(chan btmsg.IMsg),
+		Output:   make(chan btmsg.IMsg),
+		WaitConn: make(chan bool),
+	}
+
+	util.MyGoWg(wg, fmt.Sprintf("%d_conn_read", newId), func() {
+		l.LoopRead(myConn)
 	})
 
-	var s = http.Server{
-		Addr:                         l.addr,
-		Handler:                      b,
-		DisableGeneralOptionsHandler: false,
-		TLSConfig:                    nil,
-		ReadTimeout:                  0,
-		ReadHeaderTimeout:            0,
-		WriteTimeout:                 0,
-		IdleTimeout:                  0,
-		MaxHeaderBytes:               0,
-		TLSNextProto:                 nil,
-		ConnState:                    nil,
-		ErrorLog:                     nil,
-		BaseContext:                  nil,
-		ConnContext:                  nil,
-	}
+	util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_input", newId), func() {
+		l.ConsumeInput(myConn, conn)
+	})
 
-	l.listener = &s
+	util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_output", newId), func() {
+		l.ConsumeOutput(myConn, conn)
+	})
 
-	err := s.ListenAndServe()
-	if err != nil {
-		err = errors.Wrap(err, "ws listen and server")
-		panic(err)
-	}
+	fmt.Println(conn.RemoteAddr().String() + "conn success")
+
+	l.saveConn(newId, myConn)
 }
 
-func (l *Ws) ConsumeInput(conn *TcpConn,  wsConn *websocket.Conn) {
+func (l *Ws) ConsumeInput(conn *TcpConn, wsConn *websocket.Conn) {
 	for {
 		select {
 		case <-conn.WaitConn:
@@ -249,7 +249,7 @@ func (l *Ws) handelReceive(conn *TcpConn, bt btmsg.IMsg) {
 	}
 }
 
-func (l *Ws) ConsumeOutput(conn *TcpConn,  wsConn *websocket.Conn) {
+func (l *Ws) ConsumeOutput(conn *TcpConn, wsConn *websocket.Conn) {
 	for {
 		select {
 		case <-conn.WaitConn:
@@ -299,7 +299,7 @@ func (l *Ws) LoopRead(conn *TcpConn) {
 				return
 			}
 
-			conn.Input<- res.GetMsg()
+			conn.Input <- res.GetMsg()
 		}
 	}
 }
@@ -322,11 +322,11 @@ func (l *Ws) removeConn(id uint32) {
 func (l *Ws) handelReadClose(conn *TcpConn, isServer bool, isClient bool) {
 	close(conn.WaitConn)
 	if l.closeCallback != nil {
-		l.closeCallback(l,conn, isServer, isClient)
+		l.closeCallback(l, conn, isServer, isClient)
 	}
 }
 
-func (l *Ws) writeSend(conn *TcpConn, msg btmsg.IMsg,wsConn *websocket.Conn ) {
+func (l *Ws) writeSend(conn *TcpConn, msg btmsg.IMsg, wsConn *websocket.Conn) {
 	l.lock.RLock()
 	defer l.lock.RUnlock()
 

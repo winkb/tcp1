@@ -14,30 +14,38 @@ import (
 	"github.com/winkb/tcp1/contracts"
 )
 
-
 func main() {
 	//var server = mytcp.NewTcpServer("989", btmsg.NewReader(func() btmsg.IHead {
 	//	return btmsg.NewMsgHeadTcp()
 	//}))
 
-	var b = &http.ServeMux{}
-
-	b.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/home", func(w http.ResponseWriter, r *http.Request) {
 		err := homeTemplate.Execute(w, "ws://"+r.Host+"/ws")
 		if err != nil {
-			_ ,_= w.Write([]byte(err.Error()))
+			_, _ = w.Write([]byte(err.Error()))
 		}
 	})
 
 	var server = myws.NewWs("localhost:9899", "ws", btmsg.NewReader(func() btmsg.IHead {
-		return 	btmsg.NewMsgHeadWs()
-	}), b)
+		return btmsg.NewMsgHeadWs()
+	}))
 	wg, err := server.Start()
 	if err != nil {
 		panic(err)
 	}
 
-	server.OnClose(func(s contracts.ITcpServer,conn *contracts.TcpConn, isServer bool, isClient bool) {
+	http.HandleFunc("/", server.LoopAccept)
+
+	go func() {
+		wg.Add(1)
+		defer wg.Done()
+
+		fmt.Println("localhost:9899")
+
+		http.ListenAndServe("localhost:9899", nil)
+	}()
+
+	server.OnClose(func(s contracts.ITcpServer, conn *contracts.TcpConn, isServer bool, isClient bool) {
 		if isClient {
 			fmt.Println("客户端断开连接")
 		}
@@ -47,7 +55,7 @@ func main() {
 		}
 	})
 
-	server.OnReceive(func(s contracts.ITcpServer,conn *contracts.TcpConn, msg btmsg.IMsg) {
+	server.OnReceive(func(s contracts.ITcpServer, conn *contracts.TcpConn, msg btmsg.IMsg) {
 		act := msg.GetAct()
 		hv, ok := handles.Routes[act]
 		if !ok {
@@ -58,7 +66,7 @@ func main() {
 			hv = handles.Routes[act]
 		}
 
-		hv.Handle(s,conn, msg)
+		hv.Handle(s, conn, msg)
 	})
 
 	chSingle := make(chan os.Signal)
@@ -83,9 +91,7 @@ func main() {
 	close(chSingle)
 }
 
-
-
-var homeTemplate  = template.Must(template.New("").Parse(`<!DOCTYPE html>
+var homeTemplate = template.Must(template.New("").Parse(`<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
