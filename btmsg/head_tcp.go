@@ -3,6 +3,7 @@ package btmsg
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
 	"io"
@@ -16,6 +17,12 @@ type MsgHeadTcp struct {
 }
 
 var _ IHead = (*MsgHeadTcp)(nil)
+
+func FactoryMsgHeadTcp() func() IHead {
+	return func() IHead {
+		return NewMsgHeadTcp()
+	}
+}
 
 func NewMsgHeadTcp() *MsgHeadTcp {
 	return &MsgHeadTcp{}
@@ -86,4 +93,26 @@ func (l *MsgHeadTcp) ToBytes() []byte {
 	bf := bytes.NewBuffer(bt)
 	_ = binary.Write(bf, binary.LittleEndian, l)
 	return bf.Bytes()
+}
+
+func (l *MsgHeadTcp) FromStruct(v any) (bt []byte, err error) {
+	bt, err = json.Marshal(&WsResponse[any]{
+		Act: l.GetAct(),
+		Data: v,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "struct to msg")
+		return
+	}
+
+	return
+}
+
+func (l *MsgHeadTcp) ToStruct(bt []byte, v any) (any, error) {
+	err := json.Unmarshal(bt, v)
+	if err != nil {
+		return v, errors.Wrap(err, "msg to struct")
+	}
+
+	return v, nil
 }

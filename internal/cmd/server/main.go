@@ -2,7 +2,7 @@ package main
 
 import (
 	"fmt"
-	"github.com/winkb/tcp1/cmd/server/handles"
+	"github.com/winkb/tcp1/internal/cmd/server/handles"
 	"github.com/winkb/tcp1/net/myws"
 	"html/template"
 	"net/http"
@@ -129,7 +129,12 @@ window.addEventListener("load", function(evt) {
             return false;
         }
         print("SEND: " + input.value);
-		let msg  = {act:1, content:input.value}
+		let msg  = {
+			act:1, 
+			data:{
+				content:input.value
+			}
+		};
         ws.send(JSON.stringify(msg));
         return false;
     };

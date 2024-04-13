@@ -74,3 +74,34 @@ func (l *MsgHeadWs) ToBytes() []byte {
 func (l *MsgHeadWs) SetSize(size uint32) {
 	l.Size = size
 }
+
+func (l *MsgHeadWs) FromStruct(v any) (bt []byte, err error) {
+	bt, err = json.Marshal(&WsResponse[any]{
+		Act: l.GetAct(),
+		Data: v,
+	})
+	if err != nil {
+		err = errors.Wrap(err, "struct to msg")
+		return
+	}
+
+	return
+}
+
+func (l *MsgHeadWs) ToStruct(bt []byte, v any) (any, error) {
+	var tmp = &WsResponse[any]{
+		Act: 0,
+		Data: v,
+	}
+	err := json.Unmarshal(bt, tmp)
+	if err != nil {
+		return v, errors.Wrap(err, "msg to struct")
+	}
+
+	return tmp.Data, nil
+}
+
+type WsResponse [T any] struct{
+	Act uint16 `json:"act"`
+	Data T `json:"data"`
+}

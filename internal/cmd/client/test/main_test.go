@@ -57,7 +57,9 @@ func TestClientMul(t *testing.T) {
 
 	const N = 100
 
-	ts := mytcp.NewTcpServer("989", btmsg.NewReader(btmsg.NewMsgHeadTcp()))
+	ts := mytcp.NewTcpServer("989", btmsg.NewReader(func() btmsg.IHead {
+		return btmsg.NewMsgHeadTcp()
+	}))
 
 	var num int32 = 0
 	var lock sync.RWMutex
@@ -69,7 +71,7 @@ func TestClientMul(t *testing.T) {
 			panic(err2)
 		}
 
-		ts.OnClose(func(conn *contracts.TcpConn, isServer bool, isClient bool) {
+		ts.OnClose(func(s contracts.ITcpServer,conn *contracts.TcpConn, isServer bool, isClient bool) {
 			if isClient {
 				lock.Lock()
 				num++

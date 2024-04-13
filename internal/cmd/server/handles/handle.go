@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"github.com/rs/zerolog/log"
 	"github.com/winkb/tcp1/btmsg"
-	"github.com/winkb/tcp1/cmd/server/types"
+	"github.com/winkb/tcp1/internal/cmd/server/types"
 	"github.com/winkb/tcp1/contracts"
 	"github.com/winkb/tcp1/util/numfn"
 	"time"

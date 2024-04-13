@@ -8,6 +8,8 @@ type IHead interface {
 	ToBytes()[]byte
 	Read(r IReader) (err error)
 	ReadBody(r IReader) (err error, bt []byte)
+	FromStruct(v any) (bt []byte, err error)
+	ToStruct(bt []byte, v any) (any, error)
 }
 
 type IReader interface{

@@ -1,10 +1,5 @@
 package btmsg
 
-import (
-	"encoding/json"
-	"github.com/pkg/errors"
-)
-
 var _ IMsg = (*Msg)(nil)
 
 type Msg struct {
@@ -37,26 +32,13 @@ func (l *Msg) BodyByte() []byte {
 
 // v is a pointer
 func (l *Msg) FromStruct(v any) (err error) {
-	var bt []byte
-	bt, err = json.Marshal(v)
-	if err != nil {
-		err = errors.Wrap(err, "struct to msg")
-		return
-	}
-
-	l.bodyBt = bt
-
-	return nil
+	l.bodyBt, err = l.head.FromStruct(v)
+	return
 }
 
 // v is a pointer
 func (l *Msg) ToStruct(v any) (any, error) {
-	err := json.Unmarshal(l.bodyBt, v)
-	if err != nil {
-		return v, errors.Wrap(err, "msg to struct")
-	}
-
-	return v, nil
+	return l.head.ToStruct(l.bodyBt, v)
 }
 
 // 除非只需要发送head,否则需要在FromStruct之后执行
