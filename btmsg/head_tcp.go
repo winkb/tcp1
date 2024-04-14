@@ -116,3 +116,8 @@ func (l *MsgHeadTcp) ToStruct(bt []byte, v any) (any, error) {
 
 	return v, nil
 }
+
+
+func (l *MsgHeadTcp) SetAct(act uint16)  {
+	l.Act = act
+}

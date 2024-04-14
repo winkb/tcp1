@@ -3,7 +3,7 @@ package btmsg
 var _ IMsg = (*Msg)(nil)
 
 type Msg struct {
-	head IHead
+	head   IHead
 	bodyBt []byte
 }
 
@@ -11,6 +11,9 @@ func (l *Msg) BodySize() uint32 {
 	return l.head.BodySize()
 }
 
+func (l *Msg) SetAct(act uint16) {
+	l.head.SetAct(act)
+}
 func (l *Msg) HeadSize() uint32 {
 	return l.head.HeadSize()
 }
@@ -21,8 +24,8 @@ func (l *Msg) GetAct() uint16 {
 
 func NewMsg(head IHead, bodyBt []byte) *Msg {
 	return &Msg{
-		head: head,
-		bodyBt:     bodyBt,
+		head:   head,
+		bodyBt: bodyBt,
 	}
 }
 

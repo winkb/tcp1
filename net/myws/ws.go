@@ -17,14 +17,17 @@ import (
 	"github.com/winkb/tcp1/util"
 )
 
-var upgrader = websocket.Upgrader{} // use default options
+var upgrader = websocket.Upgrader{
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+} // use default options
 
 var _ ITcpServer = (*Ws)(nil)
 
 func NewWs(addr string, wsPath string, r btmsg.IMsgReader) *Ws {
 	return &Ws{
 		wsPath:          wsPath,
-		addr:            addr,
 		reader:          r,
 		closeCallback:   func(s ITcpServer, conn *TcpConn, isServer, isClient bool) {},
 		receiveCallback: func(s ITcpServer, conn *TcpConn, msg btmsg.IMsg) {},
@@ -42,9 +45,8 @@ type Ws struct {
 	listener        *http.Server
 	closeCallback   ServerCloseCallback
 	receiveCallback ServerReceiveCallback
-	addr            string
 	conns           sync.Map
-	lastId          uint32
+	lastId          uint64
 	stop            int
 	lock            sync.RWMutex
 	reader          btmsg.IMsgReader
@@ -76,6 +78,7 @@ func (l *Ws) Shutdown() {
 		fmt.Println(err)
 	}
 }
+
 func (l *Ws) Send(conn *TcpConn, v btmsg.IMsg) {
 	l.lock.RLock()
 	if l.stop != 0 {
@@ -94,7 +97,7 @@ func (l *Ws) Send(conn *TcpConn, v btmsg.IMsg) {
 	conn.Output <- v
 }
 
-func (l *Ws) getConnById(id uint32) (conn *TcpConn, ok bool) {
+func (l *Ws) getConnById(id uint64) (conn *TcpConn, ok bool) {
 	v, o := l.conns.Load(id)
 	if !o {
 		return
@@ -105,7 +108,7 @@ func (l *Ws) getConnById(id uint32) (conn *TcpConn, ok bool) {
 	return
 }
 
-func (l *Ws) SendById(id uint32, v btmsg.IMsg) {
+func (l *Ws) SendById(id uint64, v btmsg.IMsg) {
 	conn, ok := l.getConnById(id)
 	if !ok {
 		log.Err(errors.Errorf("not found conn %d", id))
@@ -127,12 +130,12 @@ func (l *Ws) listen() (err error) {
 	return nil
 }
 
-func (l *Ws) getConnAutoIncId() uint32 {
+func (l *Ws) getConnAutoIncId() uint64 {
 	for {
-		val := atomic.LoadUint32(&l.lastId)
+		val := atomic.LoadUint64(&l.lastId)
 		old := val
 		val += 1
-		if atomic.CompareAndSwapUint32(&l.lastId, old, val) {
+		if atomic.CompareAndSwapUint64(&l.lastId, old, val) {
 			return val
 		}
 	}
@@ -148,53 +151,14 @@ func (l *Ws) Start() (wg *sync.WaitGroup, err error) {
 
 	l.wg = wg
 
-	// wg.Add(1)
-	// read
-	// go func() {
-	// 	defer wg.Done()
-
-	// 	l.LoopAccept(func(conn *websocket.Conn) {
-	// 		// 注意 这里不能阻塞 lock,因为accept，有lock判断
-
-	// 		newId := l.getConnAutoIncId()
-	// 		myConn := &TcpConn{
-	// 			Conn: &wrapConn{
-	// 				Conn: conn,
-	// 			},
-	// 			Id:       newId,
-	// 			Input:    make(chan btmsg.IMsg),
-	// 			Output:   make(chan btmsg.IMsg),
-	// 			WaitConn: make(chan bool),
-	// 		}
-
-	// 		util.MyGoWg(wg, fmt.Sprintf("%d_conn_read", newId), func() {
-	// 			l.LoopRead(myConn)
-	// 		})
-
-	// 		util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_input", newId), func() {
-	// 			l.ConsumeInput(myConn, conn)
-	// 		})
-
-	// 		util.MyGoWg(wg, fmt.Sprintf("%d_conn_consume_output", newId), func() {
-	// 			l.ConsumeOutput(myConn, conn)
-	// 		})
-
-	// 		fmt.Println(conn.RemoteAddr().String() + "conn success")
-
-	// 		l.saveConn(newId, myConn)
-	// 	})
-	// }()
-
-	// fmt.Println("start server " + l.addr)
-
 	return
 }
 
-func (l *Ws) saveConn(id uint32, conn *TcpConn) {
+func (l *Ws) saveConn(id uint64, conn *TcpConn) {
 	l.conns.Store(id, conn)
 }
 
-func (l *Ws) LoopAccept(w http.ResponseWriter, r *http.Request) {
+func (l *Ws) LoopAccept(w http.ResponseWriter, r *http.Request, f func(conn *TcpConn)) {
 	var wg = l.wg
 
 	conn, err := upgrader.Upgrade(w, r, nil)
@@ -230,6 +194,8 @@ func (l *Ws) LoopAccept(w http.ResponseWriter, r *http.Request) {
 	fmt.Println(conn.RemoteAddr().String() + "conn success")
 
 	l.saveConn(newId, myConn)
+
+	f(myConn)
 }
 
 func (l *Ws) ConsumeInput(conn *TcpConn, wsConn *websocket.Conn) {
@@ -315,7 +281,7 @@ func (l *Ws) Broadcast(bt btmsg.IMsg) {
 	})
 }
 
-func (l *Ws) removeConn(id uint32) {
+func (l *Ws) removeConn(id uint64) {
 	l.conns.Delete(id)
 }
 
@@ -353,4 +319,33 @@ func (l *Ws) writeSend(conn *TcpConn, msg btmsg.IMsg, wsConn *websocket.Conn) {
 	}
 
 	log.Print("input id", id, "msg", msg.GetAct(), string(msg.BodyByte()))
+}
+
+func (l *Ws) Close(conn *TcpConn) {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+
+	if l.stop != 0 {
+		return
+	}
+
+	_ = conn.Conn.SetWriteDeadline(time.Now().Add(l.timeout))
+	id := conn.Id
+
+	var err error
+	conn.Lock.RLock()
+	defer conn.Lock.RUnlock()
+	if conn.IsClose {
+		log.Print("conn is closed, drop msg")
+		return
+	}
+
+	err = conn.Conn.Close()
+	if err != nil {
+		log.Err(errors.Wrapf(err, "conn %d close err", id))
+		return
+	}
+
+	conn.IsClose = true
+
 }

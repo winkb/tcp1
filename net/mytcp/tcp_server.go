@@ -14,14 +14,13 @@ import (
 	. "github.com/winkb/tcp1/util"
 )
 
-
 type tcpServer struct {
 	listener        net.Listener
 	closeCallback   ServerCloseCallback
 	receiveCallback ServerReceiveCallback
 	addr            string
 	conns           sync.Map
-	lastId          uint32
+	lastId          uint64
 	stop            int
 	lock            sync.RWMutex
 	reader          btmsg.IMsgReader
@@ -31,9 +30,9 @@ type tcpServer struct {
 func NewTcpServer(port string, r btmsg.IMsgReader) *tcpServer {
 	return &tcpServer{
 		listener: nil,
-		closeCallback: func(s ITcpServer,conn *TcpConn, isServer bool, isClient bool) {
+		closeCallback: func(s ITcpServer, conn *TcpConn, isServer bool, isClient bool) {
 		},
-		receiveCallback: func(s ITcpServer,conn *TcpConn, msg btmsg.IMsg) {
+		receiveCallback: func(s ITcpServer, conn *TcpConn, msg btmsg.IMsg) {
 		},
 		addr:    ":" + port,
 		conns:   sync.Map{},
@@ -70,18 +69,18 @@ func (l *tcpServer) LoopAccept(f func(conn net.Conn)) {
 	}
 }
 
-func (l *tcpServer) getConnAutoIncId() uint32 {
+func (l *tcpServer) getConnAutoIncId() uint64 {
 	for {
-		val := atomic.LoadUint32(&l.lastId)
+		val := atomic.LoadUint64(&l.lastId)
 		old := val
 		val += 1
-		if atomic.CompareAndSwapUint32(&l.lastId, old, val) {
+		if atomic.CompareAndSwapUint64(&l.lastId, old, val) {
 			return val
 		}
 	}
 }
 
-func (l *tcpServer) getConnById(id uint32) (conn *TcpConn, ok bool) {
+func (l *tcpServer) getConnById(id uint64) (conn *TcpConn, ok bool) {
 	v, o := l.conns.Load(id)
 	if !o {
 		return
@@ -92,11 +91,11 @@ func (l *tcpServer) getConnById(id uint32) (conn *TcpConn, ok bool) {
 	return
 }
 
-func (l *tcpServer) saveConn(id uint32, conn *TcpConn) {
+func (l *tcpServer) saveConn(id uint64, conn *TcpConn) {
 	l.conns.Store(id, conn)
 }
 
-func (l *tcpServer) removeConn(id uint32) {
+func (l *tcpServer) removeConn(id uint64) {
 	l.conns.Delete(id)
 }
 
@@ -196,7 +195,7 @@ func (l *tcpServer) LoopRead(conn *TcpConn) {
 func (l *tcpServer) handelReadClose(conn *TcpConn, isServer bool, isClient bool) {
 	close(conn.WaitConn)
 	if l.closeCallback != nil {
-		l.closeCallback(l,conn, isServer, isClient)
+		l.closeCallback(l, conn, isServer, isClient)
 	}
 }
 
@@ -248,7 +247,7 @@ func (l *tcpServer) Send(conn *TcpConn, v btmsg.IMsg) {
 	conn.Input <- v
 }
 
-func (l *tcpServer) SendById(id uint32, v btmsg.IMsg) {
+func (l *tcpServer) SendById(id uint64, v btmsg.IMsg) {
 	conn, ok := l.getConnById(id)
 	if !ok {
 		log.Err(errors.Errorf("not found conn %d", id))
@@ -332,4 +331,33 @@ func (l *tcpServer) Broadcast(bt btmsg.IMsg) {
 		l.Send(v, bt)
 		return true
 	})
+}
+
+func (l *tcpServer) Close(conn *TcpConn) {
+	l.lock.RLock()
+	defer l.lock.RUnlock()
+
+	if l.stop != 0 {
+		return
+	}
+
+	_ = conn.Conn.SetWriteDeadline(time.Now().Add(l.timeout))
+	id := conn.Id
+
+	var err error
+	conn.Lock.RLock()
+	defer conn.Lock.RUnlock()
+	if conn.IsClose {
+		log.Print("conn is closed, drop msg")
+		return
+	}
+
+	err = conn.Conn.Close()
+	if err != nil {
+		log.Err(errors.Wrapf(err, "conn %d close err", id))
+		return
+	}
+
+	conn.IsClose = true
+
 }

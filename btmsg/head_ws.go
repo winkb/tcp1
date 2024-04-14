@@ -5,6 +5,11 @@ import (
 	"github.com/pkg/errors"
 )
 
+type WsResponse [T any] struct{
+	Act uint16 `json:"act"`
+	Data T `json:"data"`
+}
+
 type MsgHeadWs struct {
 	Act  uint16
 	Size uint32
@@ -101,7 +106,7 @@ func (l *MsgHeadWs) ToStruct(bt []byte, v any) (any, error) {
 	return tmp.Data, nil
 }
 
-type WsResponse [T any] struct{
-	Act uint16 `json:"act"`
-	Data T `json:"data"`
+
+func (l *MsgHeadWs) SetAct(act uint16)  {
+	l.Act = act
 }
